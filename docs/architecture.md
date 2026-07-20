@@ -8,7 +8,7 @@
 
 ## ۱. نمای کلی
 
-سیستم از یک **API Gateway** به عنوان نقطه ورود واحد استفاده می‌کند که تمامی درخواست‌های خارجی را دریافت کرده و پس از احراز هویت اولیه، به سرویس مربوطه مسیریابی می‌کند. هر سرویس، دیتابیس اختصاصی خود را دارد (الگوی Database-per-Service) و ارتباط بین سرویس‌ها ترکیبی از حالت همزمان (REST/gRPC) و ناهمزمان (RabbitMQ) است.
+سیستم از یک **API Gateway** به عنوان نقطه ورود واحد استفاده می‌کند که تمامی درخواست‌های خارجی (**REST**) را دریافت کرده و پس از احراز هویت اولیه،آنها را از طریق **gRPC** به سرویس مربوطه مسیریابی می‌کند. هر سرویس، دیتابیس اختصاصی خود را دارد (الگوی Database-per-Service) و ارتباط بین سرویس‌ها ترکیبی از حالت همزمان (gRPC برای عملیات هایی که که نیاز به پاسخ فوری دارند) و ناهمزمان (RabitMQ برای فرایند های رویداد محور) است.
 
 ```mermaid
 graph TD
@@ -24,13 +24,13 @@ graph TD
 
     OrderService -->|Publish: order.created| RabbitMQ[(RabbitMQ)]
 
-    RabbitMQ --> PaymentService[Payment Service]
+    RabbitMQ -->|Consume| PaymentService[Payment Service]
 
-    PaymentService -->|Publish: payment.completed| RabbitMQ
+    PaymentService -->|Publish: payment.completed / payment.failed| RabbitMQ
 
-    RabbitMQ --> OrderService
+    RabbitMQ -->|Consume| OrderService
 
-    RabbitMQ --> NotificationService[Notification Service]
+    RabbitMQ -->|Consume| NotificationService[Notification Service]
 
     UserService --> UserDB[(PostgreSQL - User)]
     ProductService --> ProductDB[(PostgreSQL - Product)]
@@ -45,12 +45,12 @@ graph TD
 
 ### API Gateway
 
-نقطه ورود واحد سیستم است و مسئولیت‌های زیر را بر عهده دارد:
+نقطه ورود واحد سیستم است و هیچ نقشی در Business Logic ندارد و تنها مسئولیت‌های زیر را بر عهده دارد :
 
-- مسیریابی درخواست‌ها به سرویس مقصد
-- اعتبارسنجی JWT پیش از رسیدن درخواست به سرویس‌ها
-- اعمال Rate Limiting بر اساس IP یا شناسه کاربر (با استفاده از Redis)
-- لاگ متمرکز درخواست‌ها
+- مسیریابی درخواست‌ها به سرویس مقصد (Routing)
+- اعتبارسنجی JWT پیش از رسیدن درخواست به سرویس‌ها Authentication
+- اعمال Rate Limiting بر اساس IP یا شناسه کاربر (با استفاده از Redis) (Rate Limit)
+- لاگ متمرکز درخواست‌ها (Logging)
 
 ### User Service
 
@@ -68,21 +68,24 @@ graph TD
 - عملیات CRUD روی محصولات (محدود به نقش Admin)
 - جست‌وجوی محصولات
 - کش کردن نتایج پرتکرار (مثلاً محصولات پرفروش) در Redis برای کاهش فشار روی دیتابیس
+- ارائه عملیات رزرو و آزادسازی موجودی برای Order Service (فراخوانی sync از طریق gRPC)
 
 ### Order Service
 
 مدیریت چرخه حیات سفارش و هماهنگ‌کننده الگوی Saga:
 
 - ثبت سفارش و تغییر وضعیت آن
-- شروع تراکنش توزیع‌شده بین Order، Payment و Product (کسر موجودی)
-- انتشار رویدادها هنگام تغییر وضعیت سفارش
+- رزرو موجودی محصول از طریق فراخوانی sync به Product Service
+- انتشار رویداد `order.created` برای شروع فرآیند پرداخت
+- گوش‌دادن به نتیجه پرداخت (`payment.completed` / `payment.failed`) و به‌روزرسانی وضعیت سفارش؛ در صورت شکست پرداخت، آزادسازی موجودی رزروشده (Compensation)
 
 ### Payment Service
 
-شبیه‌سازی درگاه پرداخت:
+این سرویس هیچ API مستقیمی برای فراخوانی Sync با آن ندارد و تنها از طریق رویداد ها با آن تعامل میشود :
 
-- دریافت درخواست پرداخت از طریق رویداد یا فراخوانی مستقیم
-- تایید یا رد پرداخت و انتشار نتیجه به صورت رویداد
+- گوش‌دادن به رویداد `order.created`
+- پردازش (شبیه‌سازی) پرداخت
+- انتشار نتیجه به‌صورت رویداد: `payment.completed` یا `payment.failed`
 
 ### Notification Service
 
@@ -94,8 +97,9 @@ graph TD
 ### pkg
 
 هر چیزی که قرار است توسط چند سرویس استفاده شود و وابسته به Business Logic یک سرویس خاص نیست، می‌تواند داخل pkg باشد.
+پس pkg فقط شامل کدهای عمومی و قابل استفاده مجدد است و نباید شامل Business Logic مربوط به یک سرویس خاص باشد.
 
-برای مثال :
+ساختار :
 
 <div dir="ltr">
 
@@ -111,7 +115,7 @@ pkg/
 
 </div>
 
-به این صورت همه سرویس ها لاگر، ارور های استاندارد،‌رپر یکسان برای rabitmq، قرار داد های یکسان برای gRPC و سرویس مشترک برای احراز هویت خود خواهند داشت.
+به این ترتیب همه سرویس‌ها از لاگر، خطاهای استاندارد، رَپِر یکسان برای RabbitMQ، قرارداد یکسان برای gRPC و منطق مشترک احراز هویت استفاده می‌کنند.
 
 ### scripts
 
@@ -122,57 +126,68 @@ pkg/
 ```text
 scripts/
 
-├── migrate.sh
-├── generate-proto.sh
-├── start-dev.sh
-├── test.sh
-└── wait-for-db.sh
+├── migrate.sh ‍‍         # اجرای مایگریشن های دیتابیس هر سرویس
+├── generate-proto.sh   # تولید کد Go از فایل‌های .proto
+├── start-dev.sh        # بالا آوردن کل سیستم برای توسعه محلی
+├── test.sh             # اجرای تست‌های تمام سرویس‌ها
+└── wait-for-db.sh      # انتظار برای آماده شدن دیتابیس پیش از اجرا
 ```
 
 </div>
 
 ## ۳. الگوهای ارتباطی: چرا Sync و چرا Async؟
 
-| ارتباط                         | نوع              | دلیل انتخاب                                                                                                                          |
-| ------------------------------ | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Gateway → سرویس‌ها             | REST             | ساده، مناسب برای درخواست‌های مستقیم کاربر که نیاز به پاسخ فوری دارند                                                                 |
-| Order → Payment                | gRPC/REST        | نیاز به پاسخ فوری برای ادامه فرآیند Saga (موفق/ناموفق بودن پرداخت)                                                                   |
-| Order → Notification           | Async (RabbitMQ) | نوتیفیکیشن نیازی به پاسخ فوری ندارد؛ نباید سرعت ثبت سفارش را کند کند یا در صورت خرابی Notification Service، کل فرآیند سفارش مختل شود |
-| Payment → Order (نتیجه پرداخت) | Async (RabbitMQ) | جدا کردن چرخه حیات دو سرویس؛ Order نباید منتظر بمانَد و Payment نباید به‌طور مستقیم به دیتابیس Order وابسته باشد                     |
+| ارتباط                                                   | نوع              | دلیل انتخاب                                                                                                                      |
+| -------------------------------------------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Client → Gateway                                         | REST             | ساده‌ترین و سازگارترین پروتکل برای کلاینت‌های خارجی (وب/موبایل)                                                                  |
+| Gateway → سرویس‌ها                                       | gRPC             | ارتباط داخلی سیستم؛ عملکرد بهتر و قرارداد نوع‌دار (strongly-typed) نسبت به REST                                                  |
+| Order → Product (رزرو/آزادسازی موجودی)                   | Sync (gRPC)      | باید پیش از ادامه فرآیند سفارش، از کافی بودن موجودی مطمئن شد؛ نمی‌توان این مرحله را با تاخیر انجام داد                           |
+| Order → Payment (`order.created`)                        | Async (RabbitMQ) | فرآیند پرداخت می‌تواند زمان‌بر باشد؛ Order نباید منتظر پاسخ فوری بماند و در صورت خرابی موقت Payment Service، ثبت سفارش مختل نشود |
+| Payment → Order (`payment.completed` / `payment.failed`) | Async (RabbitMQ) | همان استدلال بالا، در جهت معکوس؛ همچنین جدا نگه‌داشتن چرخه حیات دو سرویس از یکدیگر                                               |
+| Payment/Order → Notification                             | Async (RabbitMQ) | نوتیفیکیشن یک عملیات جانبی است و نباید سرعت فرآیند اصلی را کند کند یا در صورت خرابی، آن را متوقف کند                             |
 
 _قاعده کلی:_
 
-اگر پاسخ فوری برای ادامه یک فرآیند حیاتی لازم است → Sync.
+اگر پاسخ فوری برای ادامه یک فرآیند حیاتی لازم است (مثل تایید موجودی) → Sync.
 
-اگر عملیات جانبی است یا می‌تواند با تاخیر انجام شود → Async.
+اگر عملیات جانبی است یا می‌تواند با تاخیر انجام شود (مثل پرداخت یا اطلاع‌رسانی) → Async.
 
 ## ۴. جریان ثبت سفارش (الگوی Saga)
 
-از آنجا که هر سرویس دیتابیس مجزا دارد، نمی‌توان از تراکنش‌های ACID سنتی بین سرویس‌ها استفاده کرد. به همین دلیل از الگوی **Choreography-based Saga** استفاده می‌شود: هر سرویس پس از انجام کار خود رویدادی منتشر می‌کند و سرویس بعدی به آن گوش می‌دهد. در صورت شکست هر مرحله، رویداد جبرانی (Compensating Event) برای بازگرداندن تغییرات قبلی منتشر می‌شود.
+از آنجا که هر سرویس دیتابیس مجزا دارد، نمی‌توان از تراکنش‌های ACID سنتی بین سرویس‌ها استفاده کرد. رزرو موجودی به‌صورت sync و فوری انجام می‌شود، اما ادامه فرآیند (پرداخت و اطلاع‌رسانی) به‌صورت **Choreography-based Saga** و از طریق رویداد پیش می‌رود: هر سرویس پس از انجام کار خود رویدادی منتشر می‌کند و سرویس بعدی به آن گوش می‌دهد. در صورت شکست پرداخت، رویداد `payment.failed` باعث اجرای عملیات جبرانی (آزادسازی موجودی) می‌شود.
 
 ```mermaid
 sequenceDiagram
     participant C as کلاینت
     participant O as Order Service
     participant P as Product Service
+    participant MQ as RabbitMQ
     participant Pay as Payment Service
     participant N as Notification Service
 
     C->>O: ثبت سفارش
     O->>O: ایجاد سفارش با وضعیت PENDING
-    O->>P: رزرو موجودی محصول
+    O->>P: رزرو موجودی محصول (Sync)
+
     alt موجودی کافی است
         P-->>O: تایید رزرو
-        O->>Pay: درخواست پرداخت
+        O->>MQ: Publish order.created
+        MQ->>Pay: Consume order.created
+        Pay->>Pay: پردازش پرداخت
+
         alt پرداخت موفق
-            Pay-->>O: تایید پرداخت
+            Pay->>MQ: Publish payment.completed
+            MQ->>O: Consume payment.completed
             O->>O: تغییر وضعیت به CONFIRMED
-            O->>N: (رویداد) order.confirmed
-            N-->>C: ارسال نوتیفیکیشن
+            MQ->>N: Consume payment.completed
+            N-->>C: ارسال نوتیفیکیشن موفقیت
         else پرداخت ناموفق
-            Pay-->>O: رد پرداخت
-            O->>P: (رویداد جبرانی) آزادسازی موجودی
+            Pay->>MQ: Publish payment.failed
+            MQ->>O: Consume payment.failed
+            O->>P: آزادسازی موجودی رزروشده (Sync، Compensation)
             O->>O: تغییر وضعیت به CANCELLED
+            MQ->>N: Consume payment.failed
+            N-->>C: ارسال نوتیفیکیشن شکست
         end
     else موجودی ناکافی
         P-->>O: رد رزرو
@@ -220,11 +235,63 @@ sequenceDiagram
 ## ۷. تحمل خطا (Resilience)
 
 - **Rate Limiting**: در سطح Gateway با شمارنده Redis پیاده‌سازی می‌شود تا از سرویس‌ها در برابر بار زیاد محافظت شود
-- **Saga Compensation**: در صورت شکست هر مرحله از فرآیند سفارش، رویدادهای جبرانی تغییرات قبلی را خنثی می‌کنند
-- **Idempotency**: مصرف‌کنندگان رویداد (مثل Notification Service) باید طوری طراحی شوند که پردازش تکراری یک پیام، اثر ناخواسته نداشته باشد
+- **Saga Compensation**: در صورت شکست پرداخت، رویداد `payment.failed` باعث آزادسازی موجودی رزروشده در Product Service می‌شود (شرح کامل در بخش ۴)
+- **Idempotency**: مصرف‌کنندگان رویداد (Order، Notification) باید طوری طراحی شوند که پردازش تکراری یک پیام (مثلاً در اثر redelivery صف)، اثر ناخواسته یا تکراری نداشته باشد
 
 ## ۸. دید Deployment
 
 در محیط توسعه، تمامی سرویس‌ها، دیتابیس‌ها، Redis و RabbitMQ با یک فایل `docker-compose.yml` واحد اجرا می‌شوند (فایل [docker/docker-compose.yml](../docker/docker-compose.yml)). هر سرویس Dockerfile مستقل خود را دارد تا امکان build و deploy جداگانه در آینده وجود داشته باشد.
+
+## 9. ساختار event ها
+
+<div dir="ltr">
+
+| Event             | Producer | Consumer            |
+| ----------------- | -------- | ------------------- |
+| order.created     | Order    | Payment             |
+| payment.completed | Payment  | Order, Notification |
+| payment.failed    | Payment  | Order, Notification |
+
+</div>
+
+## 10. Service Discovery
+
+در محیط توسعه، سرویس‌ها از طریق نام سرویس‌های Docker Compose با یکدیگر ارتباط برقرار می‌کنند.
+
+مثال:
+
+<div dir="ltr">
+
+```text
+product-service:50051
+
+rabbitmq:5672
+
+redis:6379
+```
+
+</div>
+
+## 11. Request Flow
+
+<div dir="ltr">
+
+```text
+Client → Gateway → Order Service → Product Service (reserve stock, sync)
+                          ↓
+                    Order Database
+                          ↓
+                  RabbitMQ (order.created)
+                          ↓
+                   Payment Service
+                          ↓
+      RabbitMQ (payment.completed / payment.failed)
+                    ↙            ↘
+          Order Service      Notification Service
+       (update status /
+        release stock on failure)
+```
+
+</div>
 
 </div>
