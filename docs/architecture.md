@@ -12,19 +12,25 @@
 
 ```mermaid
 graph TD
-    Client[client] --> Gateway[API Gateway]
+    Client[Client]
 
-    Gateway -->|REST| UserService[User Service]
-    Gateway -->|REST| ProductService[Product Service]
-    Gateway -->|REST| OrderService[Order Service]
+    Client[client] -->|HTTP/REST| Gateway[API Gateway]
 
-    OrderService -->|gRPC / REST| PaymentService[Payment Service]
-    OrderService -->|REST| ProductService
+    Gateway -->|gRPC| UserService[User Service]
+    Gateway -->|gRPC| ProductService[Product Service]
+    Gateway -->|gRPC| OrderService[Order Service]
+
+    OrderService -->|gRPC| ProductService
 
     OrderService -->|Publish: order.created| RabbitMQ[(RabbitMQ)]
+
+    RabbitMQ --> PaymentService[Payment Service]
+
     PaymentService -->|Publish: payment.completed| RabbitMQ
-    RabbitMQ -->|Consume| NotificationService[Notification Service]
-    RabbitMQ -->|Consume| OrderService
+
+    RabbitMQ --> OrderService
+
+    RabbitMQ --> NotificationService[Notification Service]
 
     UserService --> UserDB[(PostgreSQL - User)]
     ProductService --> ProductDB[(PostgreSQL - Product)]
@@ -32,7 +38,6 @@ graph TD
     PaymentService --> PaymentDB[(PostgreSQL - Payment)]
 
     ProductService -.->|Cache| Redis[(Redis)]
-    UserService -.->|Session/OTP| Redis
     Gateway -.->|Rate Limit Counter| Redis
 ```
 
