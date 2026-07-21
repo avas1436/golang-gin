@@ -197,7 +197,7 @@ sequenceDiagram
 
 ## ۵. مدیریت داده
 
-هر سرویس دیتابیس PostgreSQL مستقل خود را دارد و مستقیماً به دیتابیس سرویس دیگر دسترسی ندارد. این تصمیم استقلال سرویس‌ها را افزایش می‌دهد اما به معنای پذیرفتن **Eventual Consistency** بین سرویس‌هاست (جزئیات و پیامدهای این تصمیم در [docs/decisions/001-initial-project-structure-setup.md](decisions/001-initial-project-structure-setup.md) شرح داده شده است).
+هر سرویس دیتابیس PostgreSQL مستقل خود را دارد و مستقیماً به دیتابیس سرویس دیگر دسترسی ندارد. این تصمیم استقلال سرویس‌ها را افزایش می‌دهد اما به معنای پذیرفتن **Eventual Consistency** بین سرویس‌هاست (جزئیات و پیامدهای این تصمیم در [docs/decisions/0002-service-boundaries-gateway-and-data-ownership.md](decisions/0002-service-boundaries-gateway-and-data-ownership.md) شرح داده شده است).
 
 استراتژی کش:
 
