@@ -1,4 +1,4 @@
-// pkg/proto/user.proto
+// pkg/proto/user/user.proto
 
 syntax = "proto3";
 
