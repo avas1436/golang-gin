@@ -113,9 +113,21 @@
 
 </div>
 
+- ✅ در مرحله آخر هم برای اجرا و اعمال مایگریشن ها باید دستور زیر رو مطابق ویژگی های دیتابیس خود بزنیم:
+
+<div dir="ltr">
+
+```
+  migrate //
+  -database //
+  "postgres://user_service:my_password@localhost:5432/user_service_db?sslmode=disable" //
+  -path migrations up
+```
+
+</div>
+
 ## مراحل بعدی (هنوز انجام نشده)
 
-- ⏳ تعریف Migration دیتابیس (جداول `users` و `refresh_tokens`)
 - ⏳ پیاده‌سازی لایه `repository`
 - ⏳ پیاده‌سازی لایه `service` (منطق کسب‌وکار + تولید/بررسی JWT و OTP)
 - ⏳ پیاده‌سازی لایه `handler` (پیاده‌سازی interface سرور gRPC تولیدشده از proto)
