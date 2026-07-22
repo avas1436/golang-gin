@@ -78,6 +78,13 @@
 - ✅ تعریف struct `User` داخلی (شامل `PasswordHash`، که هرگز در proto وجود ندارد)
 - ✅ تعریف struct `RefreshToken` داخلی برای نگهداری و ابطال (revoke) توکن‌ها در دیتابیس
 
+## 6. ساخت مایگریشن های دیتا بیس
+
+- ✅ ابتدا نصب golang-migrate برای مدیریت مایگریشن ها
+  ```
+  go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
+  ```
+
 ## مراحل بعدی (هنوز انجام نشده)
 
 - ⏳ تعریف Migration دیتابیس (جداول `users` و `refresh_tokens`)
