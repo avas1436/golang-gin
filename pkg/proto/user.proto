@@ -1,0 +1,89 @@
+// pkg/proto/user.proto
+
+syntax = "proto3";
+
+package user;
+
+import "google/protobuf/timestamp.proto";
+option go_package = "pkg/proto/user";
+
+// RBAC
+enum Role {
+  ROLE_UNSPECIFIED = 0;
+  ROLE_ADMIN = 1;
+  ROLE_MEMBER = 2;
+  ROLE_VIEWER = 3;
+}
+
+// --- User ---
+message User {
+  string id = 1;
+  string email = 2;
+  string phone_number = 3;
+  string full_name = 4;
+  Role role = 5;
+  google.protobuf.Timestamp created_at = 6;
+}
+
+// --- Register ---
+message RegisterRequest {
+  string phone_number = 1;
+  string email = 2;
+  string password = 3;
+  string full_name = 4;
+}
+
+// --- Register Response ---
+message RegisterResponse {
+  User user = 1;
+}
+
+// --- Login ---
+message LoginRequest {
+  string phone_number = 1;
+  string password = 2;
+}
+
+message LoginResponse {
+    string challenge_id = 1;
+    bool requires_otp = 2;
+}
+
+// --- VerifyOTP ---
+message VerifyOTPRequest {
+  string otp_challenge_id = 1;
+  string otp_code = 2;
+}
+
+// --- Verify OTP Response ---
+message VerifyOTPResponse {
+    string access_token = 1;
+    string refresh_token = 2;
+    int64 expires_in = 3;
+    User user = 4;
+}
+
+// --- RefreshToken ---
+message RefreshTokenRequest {
+  string refresh_token = 1;
+}
+
+message RefreshTokenResponse {
+  string access_token = 1;
+  string refresh_token = 2;
+  int64 expires_in = 3;
+}
+
+// --- get user ---
+message GetUserRequest {
+    string id = 1;
+}
+
+
+service UserService {
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+  rpc Login(LoginRequest) returns (LoginResponse);
+  rpc VerifyOTP(VerifyOTPRequest) returns (VerifyOTPResponse);
+  rpc RefreshToken(RefreshTokenRequest) returns (RefreshTokenResponse);
+  rpc GetUser(GetUserRequest) returns (User);
+}
