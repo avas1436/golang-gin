@@ -78,7 +78,7 @@
 - ✅ تعریف struct `User` داخلی (شامل `PasswordHash`، که هرگز در proto وجود ندارد)
 - ✅ تعریف struct `RefreshToken` داخلی برای نگهداری و ابطال (revoke) توکن‌ها در دیتابیس
 
-## 6. ساخت مایگریشن های دیتا بیس
+## 6. ساخت مایگریشن های دیتابیس
 
 - ✅ ابتدا نصب golang-migrate برای مدیریت مایگریشن ها
 
@@ -126,9 +126,33 @@
 
 </div>
 
+## 7. پیاده‌سازی لایه `repository`
+
+- ✅ ابتدا یک کتابخانه سریع و کامل برای ارتباط به دیتابیس نیاز داریم و من pgx رو انتخاب کردم و باید با دستور زیر نصبش کنیم :
+
+<div dir="ltr">
+
+```
+  go get github.com/jackc/pgx/v5/pgxpool
+```
+
+</div>
+
+- ✅ حالا فایل های مورد نیاز برای مدیریت لایه رپوزیتوری رو میسازیم :
+
+<div dir="ltr">
+
+```
+  services/user-service/internal/repository/
+  ├── postgres.go                   ← connection pool
+  ├── user_repository.go            ← CRUD on users
+  └── refresh_token_repository.go   ← refresh_tokens actions
+```
+
+</div>
+
 ## مراحل بعدی (هنوز انجام نشده)
 
-- ⏳ پیاده‌سازی لایه `repository`
 - ⏳ پیاده‌سازی لایه `service` (منطق کسب‌وکار + تولید/بررسی JWT و OTP)
 - ⏳ پیاده‌سازی لایه `handler` (پیاده‌سازی interface سرور gRPC تولیدشده از proto)
 - ⏳ نوشتن `cmd/main.go` برای بالا آوردن سرور gRPC
