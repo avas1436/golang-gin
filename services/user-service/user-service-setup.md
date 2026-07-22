@@ -81,9 +81,37 @@
 ## 6. ساخت مایگریشن های دیتا بیس
 
 - ✅ ابتدا نصب golang-migrate برای مدیریت مایگریشن ها
+
   ```
   go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
   ```
+
+- ✅ ایجاد اولین مایگریشن ها برای جدول کاربر و رفرش توکن
+
+  ```
+  cd services/user-service
+  migrate create -ext sql -dir migrations -seq create_users_table
+  migrate create -ext sql -dir migrations -seq create_refresh_tokens_table
+  ```
+
+- ✅ حالا دقیقا مطابق جدولی که ایجاد کردیم باید محتوی فایل های مایگریشن رو پرکنیم و مقادیر موجود در جداول و ویژگی هر ستون و ایندکس ها و .. رو به صورت دستی بر خلاف کد های پایتونی باید دستی بنویسیم.
+
+- ✅ حالا برای اجرای مایگریشن ها نیاز داریم به دیتا بیس وصل شویم پس برای اجرای آزمایشی به صورت local ابتدا وارد دیتایس میشویم و یک کاربر مخصوص این سرویس ایجاد میکنیم.
+
+<div dir="ltr">
+
+```
+  -- در ترمینال ابونتو
+  sudo -u postgres psql
+
+  -- ساخت یوزر جدید
+  CREATE ROLE user_service WITH LOGIN PASSWORD 'strong_password';
+
+  -- ساخت دیتا بیس جدید
+  CREATE DATABASE user_service_db OWNER user_service;
+```
+
+</div>
 
 ## مراحل بعدی (هنوز انجام نشده)
 
