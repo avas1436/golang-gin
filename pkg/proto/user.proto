@@ -15,7 +15,7 @@ enum Role {
   ROLE_VIEWER = 3;
 }
 
-// --- User ---
+// --- Get User ---
 message User {
   string id = 1;
   string email = 2;
@@ -33,7 +33,6 @@ message RegisterRequest {
   string full_name = 4;
 }
 
-// --- Register Response ---
 message RegisterResponse {
   User user = 1;
 }
@@ -45,8 +44,8 @@ message LoginRequest {
 }
 
 message LoginResponse {
-    string challenge_id = 1;
-    bool requires_otp = 2;
+  string challenge_id = 1;
+  bool requires_otp = 2;
 }
 
 // --- VerifyOTP ---
@@ -55,12 +54,11 @@ message VerifyOTPRequest {
   string otp_code = 2;
 }
 
-// --- Verify OTP Response ---
 message VerifyOTPResponse {
-    string access_token = 1;
-    string refresh_token = 2;
-    int64 expires_in = 3;
-    User user = 4;
+  string access_token = 1;
+  string refresh_token = 2;
+  int64 expires_in = 3;
+  User user = 4;
 }
 
 // --- RefreshToken ---
@@ -76,9 +74,15 @@ message RefreshTokenResponse {
 
 // --- get user ---
 message GetUserRequest {
-    string id = 1;
+  string id = 1;
 }
 
+// --- Logout ---
+message LogoutRequest {
+  string refresh_token = 1;
+}
+
+message LogoutResponse {}
 
 service UserService {
   rpc Register(RegisterRequest) returns (RegisterResponse);
@@ -86,4 +90,5 @@ service UserService {
   rpc VerifyOTP(VerifyOTPRequest) returns (VerifyOTPResponse);
   rpc RefreshToken(RefreshTokenRequest) returns (RefreshTokenResponse);
   rpc GetUser(GetUserRequest) returns (User);
+  rpc Logout(LogoutRequest) returns (LogoutResponse);
 }
