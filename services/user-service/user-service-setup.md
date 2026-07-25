@@ -160,6 +160,17 @@
 3. تولید و بررسی کد های OTP
 4. پیاده سازی متد های `Register`, `Login`, `VerifyOTP`, `RefreshToken`, `GetUser`, `Logout`
 
+- ✅ اول وارد ماژول pkg میشیم و یک پکیج مشترک برای هش کردن رمز عبور میسازیم که در سرویس های دیگر هم قابل استفاده باشد.
+
+<div dir="ltr">
+
+```
+  cd pkg
+  go get golang.org/x/crypto/bcrypt
+```
+
+</div>
+
 ## مراحل بعدی (هنوز انجام نشده)
 
 - ⏳ پیاده‌سازی لایه `handler` (پیاده‌سازی interface سرور gRPC تولیدشده از proto)
