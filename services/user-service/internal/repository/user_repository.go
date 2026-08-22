@@ -139,13 +139,13 @@ func (
 
 	query := `
 		SELECT 
-		id, 
-		email, 
-		phone_number, 
-		full_name, 
-		role, 
-		created_at,
-		
+			id, 
+			email, 
+			phone_number, 
+			full_name, 
+			role, 
+			created_at
+			updated_at
 		FROM users
 		WHERE email = $1 OR phone_number = $1
 	`

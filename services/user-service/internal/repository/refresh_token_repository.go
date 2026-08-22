@@ -28,7 +28,7 @@ type RefreshTokenRepository interface {
 	)
 
 	// باطل کردن
-	revoke(
+	Revoke(
 		ctx context.Context, id string,
 	) error
 }
@@ -57,7 +57,7 @@ func (r *refreshTokenRepository,
 		INSERT INTO refresh_tokens (
 			user_id, 
 			token_hash, 
-			expires_at, 
+			expires_at
 		)
 		VALUES ($1, $2, $3)
 		RETURNING id, created_at
@@ -106,7 +106,7 @@ func (
 // باطل کردن
 func (
 	r *refreshTokenRepository,
-) revoke(
+) Revoke(
 	ctx context.Context, id string,
 ) error {
 
