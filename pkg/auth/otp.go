@@ -11,7 +11,7 @@ import (
 // Generate OTP
 func GenerateOTP() (string, error) {
 
-	max := big.NewInt(10000)
+	max := big.NewInt(100000)
 
 	n, err := rand.Int(rand.Reader, max)
 	if err != nil {
