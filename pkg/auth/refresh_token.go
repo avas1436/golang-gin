@@ -6,7 +6,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
+	appErrors "pkg/errors"
 )
 
 // GenerateRefreshToken یک رشته‌ی رندوم و غیرقابل‌ حدس می‌ سازد.
@@ -20,7 +20,11 @@ func GenerateRefreshToken() (string, error) {
 	b := make([]byte, 32)
 
 	if _, err := rand.Read(b); err != nil {
-		return "", fmt.Errorf("failed to generate refresh token: %w", err)
+		return "", appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to generate refresh token",
+		)
 	}
 
 	return hex.EncodeToString(b), nil

@@ -6,6 +6,7 @@ import (
 	"crypto/rand" // این پکیج برای تولید اعداد تصادفی امن استفاده می‌شود
 	"fmt"
 	"math/big"
+	appErrors "pkg/errors"
 )
 
 // Generate OTP
@@ -15,7 +16,11 @@ func GenerateOTP() (string, error) {
 
 	n, err := rand.Int(rand.Reader, max)
 	if err != nil {
-		return "", fmt.Errorf("failed to generate otp: %w", err)
+		return "", appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to generate otp",
+		)
 	}
 
 	return fmt.Sprintf("%05d", n.Int64()), nil
