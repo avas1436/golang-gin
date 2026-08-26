@@ -117,3 +117,9 @@ func GetKind(err error) Kind {
 // if errors.As(err, &e) {
 //     fmt.Println(e.Kind)
 // }
+
+// طریقه ایمپورت:
+// import (
+// 	stdErrors "errors" ارور های استاندارد گولنگ
+// 	appErrors "pkg/errors" ارور های دستی ما
+// )

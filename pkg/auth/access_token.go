@@ -3,7 +3,9 @@
 package auth
 
 import (
+	stdErrors "errors"
 	"fmt"
+	appErrors "pkg/errors"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -47,7 +49,11 @@ func GenerateAccessToken(
 
 	signed, err := token.SignedString([]byte(secret))
 	if err != nil {
-		return "", fmt.Errorf("failed to sign access token: %w", err)
+		return "", appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to sign access token",
+		)
 	}
 
 	return signed, nil
@@ -71,7 +77,8 @@ func ParseAccessToken(
 			// امضا رو به چیزی غیر از HMAC تغییر بده.
 			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, fmt.Errorf(
-					"unexpected signing method: %v", t.Header["alg"],
+					"unexpected signing method: %v",
+					t.Header["alg"],
 				)
 			}
 
@@ -80,16 +87,35 @@ func ParseAccessToken(
 	)
 
 	if err != nil {
-		return nil, err
+
+		if stdErrors.Is(err, jwt.ErrTokenExpired) {
+			return nil, appErrors.Wrap(
+				appErrors.KindUnauthenticated,
+				err,
+				"token has expired",
+			)
+		}
+
+		return nil, appErrors.Wrap(
+			appErrors.KindUnauthenticated,
+			err,
+			"invalid or malformed token",
+		)
 	}
 
 	claims, ok := token.Claims.(*AccessClaims)
 	if !ok {
-		return nil, fmt.Errorf("invalid access token claims")
+		return nil, appErrors.New(
+			appErrors.KindUnauthenticated,
+			"invalid access token claims",
+		)
 	}
 
 	if !token.Valid {
-		return nil, fmt.Errorf("invalid access token")
+		return nil, appErrors.New(
+			appErrors.KindUnauthenticated,
+			"invalid or malformed token",
+		)
 	}
 
 	return claims, nil

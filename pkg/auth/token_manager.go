@@ -21,7 +21,10 @@ type tokenManager struct {
 // NewTokenManager یک TokenManager می‌سازد. secret و مدت اعتبار access
 // token فقط همین‌جا نگه داشته می‌شوند، نه در هر سرویسی که ازش استفاده
 // می‌کند.
-func NewTokenManager(secret string, accessTokenTTL time.Duration) TokenManager {
+func NewTokenManager(
+	secret string,
+	accessTokenTTL time.Duration,
+) TokenManager {
 
 	return &tokenManager{
 		secret:         secret,
