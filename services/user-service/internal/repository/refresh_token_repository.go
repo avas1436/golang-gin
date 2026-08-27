@@ -6,42 +6,40 @@ import (
 	"context"
 	stdErrors "errors"
 	appErrors "pkg/errors"
+	"pkg/postgres"
 	"time"
 	"user-service/internal/model"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type RefreshTokenRepository interface {
 	// ساخت
-	Create(
-		ctx context.Context, token *model.RefreshToken,
-	) error
+	Create(ctx context.Context, token *model.RefreshToken) error
 
 	// خواندن
 	GetByTokenHash(
-		ctx context.Context, tokenHash string,
+		ctx context.Context,
+		tokenHash string,
 	) (
-		*model.RefreshToken, error,
+		*model.RefreshToken,
+		error,
 	)
 
 	// باطل کردن
-	Revoke(
-		ctx context.Context, id string,
-	) error
+	Revoke(ctx context.Context, id string) error
 }
 
 // ساختار رپوزیتوری توکن رفرش
 type refreshTokenRepository struct {
-	pool *pgxpool.Pool
+	db postgres.DBTX
 }
 
 // ساخت یک رپوزیتوری رفرش توکن جدید
-func NewRefreshTokenRepository(pool *pgxpool.Pool) RefreshTokenRepository {
+func NewRefreshTokenRepository(db postgres.DBTX) RefreshTokenRepository {
 
 	return &refreshTokenRepository{
-		pool: pool,
+		db: db,
 	}
 
 }
@@ -93,7 +91,7 @@ func (
 		RETURNING id, created_at
 	`
 
-	err := r.pool.QueryRow(ctx, query, rt.UserID, rt.TokenHash, rt.ExpiresAt).
+	err := r.db.QueryRow(ctx, query, rt.UserID, rt.TokenHash, rt.ExpiresAt).
 		Scan(&rt.ID, &rt.CreatedAt)
 
 	if err != nil {
@@ -143,7 +141,7 @@ func (
 	`
 
 	rt := &model.RefreshToken{}
-	err := r.pool.QueryRow(
+	err := r.db.QueryRow(
 		ctx,
 		query,
 		tokenHash,
@@ -196,7 +194,7 @@ func (
 
 	query := `UPDATE refresh_tokens SET revoked = true WHERE id = $1`
 
-	tag, err := r.pool.Exec(ctx, query, id)
+	tag, err := r.db.Exec(ctx, query, id)
 
 	if err != nil {
 
