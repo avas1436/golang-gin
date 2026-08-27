@@ -4,15 +4,14 @@ package repository
 
 import (
 	"context"
-	"errors"
-	"fmt"
+	stdErrors "errors"
+	appErrors "pkg/errors"
+	"time"
 	"user-service/internal/model"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
-
-var ErrRefreshTokenNotFound = errors.New("refresh token not found")
 
 type RefreshTokenRepository interface {
 	// ساخت
@@ -48,10 +47,41 @@ func NewRefreshTokenRepository(pool *pgxpool.Pool) RefreshTokenRepository {
 }
 
 // ساخت
-func (r *refreshTokenRepository,
+func (
+	r *refreshTokenRepository,
 ) Create(
-	ctx context.Context, rt *model.RefreshToken,
+	ctx context.Context,
+	rt *model.RefreshToken,
 ) error {
+
+	// اعتبارسنجی ورودی‌ها
+	if rt == nil {
+		return appErrors.New(
+			appErrors.KindInvalidInput,
+			"refresh token cannot be nil",
+		)
+	}
+
+	if rt.UserID == "" {
+		return appErrors.New(
+			appErrors.KindInvalidInput,
+			"user id cannot be empty",
+		)
+	}
+
+	if rt.TokenHash == "" {
+		return appErrors.New(
+			appErrors.KindInvalidInput,
+			"token hash cannot be empty",
+		)
+	}
+
+	if rt.ExpiresAt.IsZero() || rt.ExpiresAt.Before(time.Now()) {
+		return appErrors.New(
+			appErrors.KindInvalidInput,
+			"token expiration time must be in the future",
+		)
+	}
 
 	query := `
 		INSERT INTO refresh_tokens (
@@ -67,7 +97,20 @@ func (r *refreshTokenRepository,
 		Scan(&rt.ID, &rt.CreatedAt)
 
 	if err != nil {
-		return fmt.Errorf("failed to create refresh token: %w", err)
+		// بررسی خطای unique constraint برای token_hash
+		var pgErr interface{ SQLState() string }
+		if stdErrors.As(err, &pgErr) && pgErr.SQLState() == "23505" {
+			return appErrors.New(
+				appErrors.KindAlreadyExists,
+				"refresh token already exists",
+			)
+		}
+
+		return appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to create refresh token in database",
+		)
 	}
 
 	return nil
@@ -78,8 +121,20 @@ func (r *refreshTokenRepository,
 func (
 	r *refreshTokenRepository,
 ) GetByTokenHash(
-	ctx context.Context, tokenHash string,
-) (*model.RefreshToken, error) {
+	ctx context.Context,
+	tokenHash string,
+) (
+	*model.RefreshToken,
+	error,
+) {
+
+	// اعتبارسنجی ورودی
+	if tokenHash == "" {
+		return nil, appErrors.New(
+			appErrors.KindInvalidInput,
+			"token hash cannot be empty",
+		)
+	}
 
 	query := `
 		SELECT id, user_id, token_hash, expires_at, revoked, created_at
@@ -88,16 +143,36 @@ func (
 	`
 
 	rt := &model.RefreshToken{}
-	err := r.pool.QueryRow(ctx, query, tokenHash).Scan(
-		&rt.ID, &rt.UserID, &rt.TokenHash, &rt.ExpiresAt, &rt.Revoked, &rt.CreatedAt,
+	err := r.pool.QueryRow(
+		ctx,
+		query,
+		tokenHash,
+	).Scan(
+		&rt.ID,
+		&rt.UserID,
+		&rt.TokenHash,
+		&rt.ExpiresAt,
+		&rt.Revoked,
+		&rt.CreatedAt,
 	)
 
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, ErrRefreshTokenNotFound
-	}
-
 	if err != nil {
-		return nil, fmt.Errorf("failed to get refresh token: %w", err)
+
+		if stdErrors.Is(err, pgx.ErrNoRows) {
+
+			return nil, appErrors.New(
+				appErrors.KindNotFound,
+				"refresh token not found",
+			)
+
+		}
+
+		return nil, appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to get refresh token by hash",
+		)
+
 	}
 
 	return rt, nil
@@ -107,17 +182,39 @@ func (
 func (
 	r *refreshTokenRepository,
 ) Revoke(
-	ctx context.Context, id string,
+	ctx context.Context,
+	id string,
 ) error {
+
+	// اعتبارسنجی ورودی
+	if id == "" {
+		return appErrors.New(
+			appErrors.KindInvalidInput,
+			"token id cannot be empty",
+		)
+	}
 
 	query := `UPDATE refresh_tokens SET revoked = true WHERE id = $1`
 
 	tag, err := r.pool.Exec(ctx, query, id)
+
 	if err != nil {
-		return fmt.Errorf("failed to revoke refresh token: %w", err)
+
+		return appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to revoke refresh token",
+		)
+
 	}
+
 	if tag.RowsAffected() == 0 {
-		return ErrRefreshTokenNotFound
+
+		return appErrors.New(
+			appErrors.KindNotFound,
+			"refresh token not found or already revoked",
+		)
+
 	}
 
 	return nil

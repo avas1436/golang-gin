@@ -11,6 +11,7 @@ type TokenManager interface {
 	ParseAccessToken(tokenString string) (*AccessClaims, error)
 	GenerateRefreshToken() (string, error)
 	HashRefreshToken(token string) string
+	AccessTokenTTL() time.Duration
 }
 
 type tokenManager struct {
@@ -56,4 +57,9 @@ func (m *tokenManager) GenerateRefreshToken() (string, error) {
 // هش کردن رفرش توکن در دیتابیس
 func (m *tokenManager) HashRefreshToken(token string) string {
 	return HashRefreshToken(token)
+}
+
+// خروجی زمان انقضای اکسس توکن
+func (m *tokenManager) AccessTokenTTL() time.Duration {
+	return m.accessTokenTTL
 }
