@@ -242,7 +242,7 @@ func (
 			full_name = $3,
 			role = $4,
 			updated_at = NOW()
-		WHERE id = $5 AND deleted_at IS NULL
+		WHERE id = $5
 		RETURNING updated_at
 	`
 
