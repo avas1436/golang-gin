@@ -6,10 +6,10 @@ import (
 	"context"
 	stdErrors "errors"
 	appErrors "pkg/errors"
+	"pkg/postgres"
 	"user-service/internal/model"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // User Repository interface
@@ -33,14 +33,14 @@ type UserRepository interface {
 
 // User Repository implementation
 type userRepository struct {
-	pool *pgxpool.Pool
+	db postgres.DBTX
 }
 
 // Create user repository
-func NewUserRepository(pool *pgxpool.Pool) UserRepository {
+func NewUserRepository(db postgres.DBTX) UserRepository {
 
 	return &userRepository{
-		pool: pool,
+		db: db,
 	}
 
 }
@@ -75,7 +75,7 @@ func (
 		RETURNING id, created_at, updated_at
 	`
 
-	err := r.pool.QueryRow(
+	err := r.db.QueryRow(
 		ctx,
 		query,
 		u.Email,
@@ -133,7 +133,7 @@ func (
 
 	u := &model.User{}
 
-	err := r.pool.QueryRow(ctx, query, id).Scan(
+	err := r.db.QueryRow(ctx, query, id).Scan(
 		&u.ID,
 		&u.Email,
 		&u.PhoneNumber,
@@ -191,7 +191,7 @@ func (
 	`
 
 	u := &model.User{}
-	err := r.pool.QueryRow(ctx, query, emailOrPhone).Scan(
+	err := r.db.QueryRow(ctx, query, emailOrPhone).Scan(
 		&u.ID,
 		&u.Email,
 		&u.PhoneNumber,
@@ -246,7 +246,7 @@ func (
 		RETURNING updated_at
 	`
 
-	result, err := r.pool.Exec(ctx, query,
+	result, err := r.db.Exec(ctx, query,
 		u.Email,
 		u.PhoneNumber,
 		u.FullName,
