@@ -184,7 +184,7 @@ func (
 			phone_number, 
 			full_name, 
 			role, 
-			created_at
+			created_at,
 			updated_at
 		FROM users
 		WHERE email = $1 OR phone_number = $1
