@@ -293,6 +293,19 @@ go get github.com/google/uuid
   6. `service.NewUserService(...)` با تزریق همه‌ی وابستگی‌های بالا
 - ⏳ فعلاً `userService` ساخته می‌شه ولی جایی استفاده نمی‌شه (`_ = userService`) چون هنوز سرور gRPC (لایه‌ی `handler`) وصل نشده.
 
+## ۱۲. فایل کانفیگ و اضافه کردن متغیر های محیطی
+
+با این ساختار فعلی فایل کانفیگ در صورت لود شدن فایل `.env` در داکر به صورت خودکار این فایل کار خواهد کرد ولی برای اجرای سرویس در محیط لوکال نیاز است که این فایل در برنامه لود شود برای این کار پکیج مخصوص را در `pkg` لود میکنیم:
+
+<div dir="ltr">
+
+```bash
+  cd pkg
+  go get github.com/joho/godotenv
+```
+
+</div>
+
 ## مراحل بعدی (هنوز انجام نشده)
 
 - ⏳ پیاده‌سازی لایه‌ی `handler`: پیاده‌سازی interface سرور gRPC تولیدشده از proto (`pb.UnimplementedUserServiceServer`)، که متدهای `UserService` رو صدا می‌زنه و خطاهای دامنه‌ای (با `appErrors.GetKind`) رو به کدهای استاندارد gRPC (`codes.NotFound`, `codes.Unauthenticated`, ...) تبدیل می‌کنه.

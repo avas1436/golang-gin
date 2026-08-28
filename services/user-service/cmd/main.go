@@ -7,6 +7,7 @@ import (
 	"log"
 
 	"pkg/auth"
+	"pkg/env"
 	"pkg/postgres"
 
 	"user-service/config"
@@ -15,6 +16,9 @@ import (
 )
 
 func main() {
+
+	// لود کردن فایل متغیر های محیطی در محیط پردازش برنامه
+	env.Load(".env")
 
 	// یک کانتکست پایه برای شروع پروژه
 	ctx := context.Background()
@@ -51,8 +55,12 @@ func main() {
 		log.Fatalf("failed to connect to redis: %v", err)
 	}
 
-	// cleanup
-	defer redisClient.Close()
+	// Redis cleanup
+	defer func() {
+		if err := redisClient.Close(); err != nil {
+			log.Printf("failed to close redis client: %v", err)
+		}
+	}()
 
 	// Dependency Injection for database, redis, token and service
 	userRepo := repository.NewUserRepository(pool)
