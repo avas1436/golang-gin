@@ -23,6 +23,15 @@ message User {
   string full_name = 4;
   Role role = 5;
   google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp updated_at = 7;
+}
+
+// پاسخ استاندارد به هر گونه احراز هویت
+message AuthResponse {
+  string access_token = 1;
+  string refresh_token = 2;
+  int64 expires_in = 3;
+  User user = 4;
 }
 
 // --- Register ---
@@ -33,44 +42,38 @@ message RegisterRequest {
   string full_name = 4;
 }
 
-message RegisterResponse {
-  User user = 1;
-}
-
 // --- Login ---
-message LoginRequest {
-  string phone_number = 1;
+message PasswordLoginRequest {
+  // این فیلد میتواند شماره یا ایمیل باشد
+  string identifier = 1;
   string password = 2;
 }
 
-message LoginResponse {
-  string challenge_id = 1;
-  bool requires_otp = 2;
+// --- Login: OTP (Step 1) ---
+message OTPLoginRequest {
+  string phone_number = 1;
 }
 
-// --- VerifyOTP ---
+// پاسخ مرحله اول تنها آیدی چالش و مدت زمان اعتبار آن به ثانیه است
+message OTPLoginResponse {
+  string challenge_id = 1;
+  int32 expires_in_seconds = 2;
+}
+
+// --- Login: OTP (Step 2) ---
 message VerifyOTPRequest {
   string otp_challenge_id = 1;
   string otp_code = 2;
 }
 
-message VerifyOTPResponse {
-  string access_token = 1;
-  string refresh_token = 2;
-  int64 expires_in = 3;
-  User user = 4;
-}
+// پاسخ مرحله دو همان AuthResponse است
 
 // --- RefreshToken ---
 message RefreshTokenRequest {
   string refresh_token = 1;
 }
 
-message RefreshTokenResponse {
-  string access_token = 1;
-  string refresh_token = 2;
-  int64 expires_in = 3;
-}
+// پاسخ رفرش توکن هم مجددا AuthResponse است
 
 // --- get user ---
 message GetUserRequest {
@@ -85,10 +88,11 @@ message LogoutRequest {
 message LogoutResponse {}
 
 service UserService {
-  rpc Register(RegisterRequest) returns (RegisterResponse);
-  rpc Login(LoginRequest) returns (LoginResponse);
-  rpc VerifyOTP(VerifyOTPRequest) returns (VerifyOTPResponse);
-  rpc RefreshToken(RefreshTokenRequest) returns (RefreshTokenResponse);
+  rpc Register(RegisterRequest) returns (AuthResponse);
+  rpc PasswordLogin(PasswordLoginRequest) returns (AuthResponse);
+  rpc OTPLogin(OTPLoginRequest) returns (OTPLoginResponse);
+  rpc VerifyOTP(VerifyOTPRequest) returns (AuthResponse);
+  rpc RefreshToken(RefreshTokenRequest) returns (AuthResponse);
   rpc GetUser(GetUserRequest) returns (User);
   rpc Logout(LogoutRequest) returns (LogoutResponse);
 }
