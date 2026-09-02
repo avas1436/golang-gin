@@ -1,0 +1,21 @@
+# زبان اصلی پروژه را Go معرفی کنید
+* linguist-language=Go
+
+# فایل‌هایی که نباید در آمار زبان محسوب شوند
+Makefile linguist-vendored
+*.md linguist-vendored
+*.sql linguist-vendored
+*.yml linguist-vendored
+*.yaml linguist-vendored
+Dockerfile linguist-vendored
+go.work linguist-vendored
+
+# پکیج‌های مشترک را به عنوان vendored محسوب کن
+pkg/** linguist-vendored
+api/** linguist-vendored
+deploy/** linguist-vendored
+docs/** linguist-vendored
+scripts/** linguist-vendored
+
+# سرویس‌ها را به عنوان کد اصلی در نظر بگیر
+services/**/*.go linguist-language=Go

@@ -84,7 +84,7 @@
 <div dir="ltr">
 
 - [x] [Initial project structure setup](docs/decisions/001-initial-project-structure-setup.md)
-- [ ] User Service implementation with JWT
+- [x] User Service implementation with JWT
 - [ ] Product Service implementation
 - [ ] Order Service implementation with Saga pattern
 - [ ] RabbitMQ integration for asynchronous communication
