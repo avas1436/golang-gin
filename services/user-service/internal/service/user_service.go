@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"log"
 	"pkg/auth"
 	appErrors "pkg/errors"
 	pb "pkg/proto/user"
@@ -138,14 +139,14 @@ func (
 		nil
 }
 
-// OTP Login
+// Password Login
 func (
 	s *UserService,
-) OTPLogin(
+) PasswordLogin(
 	ctx context.Context,
-	req *pb.LoginRequest,
+	req *pb.PasswordLoginRequest,
 ) (
-	*pb.LoginResponse,
+	*pb.AuthResponse,
 	error,
 ) {
 
@@ -157,10 +158,10 @@ func (
 		)
 	}
 
-	if req.PhoneNumber == "" {
+	if req.Identifier == "" {
 		return nil, appErrors.New(
 			appErrors.KindInvalidInput,
-			"phone number is required",
+			"phone number or email address is required",
 		)
 	}
 
@@ -171,7 +172,7 @@ func (
 		)
 	}
 
-	user, err := s.userRepo.GetByEmailOrPhone(ctx, req.PhoneNumber)
+	user, err := s.userRepo.GetByEmailOrPhone(ctx, req.Identifier)
 	if err != nil {
 
 		if appErrors.GetKind(err) == appErrors.KindNotFound {
@@ -179,7 +180,7 @@ func (
 			// برای امنیت، پیام یکسان می‌دهیم
 			return nil, appErrors.New(
 				appErrors.KindUnauthenticated,
-				"invalid phone number or password",
+				"invalid phone number or email",
 			)
 
 		}
@@ -188,12 +189,15 @@ func (
 		return nil, appErrors.Wrap(
 			appErrors.KindInternal,
 			err,
-			"failed to get user by phone number",
+			"failed to get user by phone number or email",
 		)
 	}
 
 	// مقایسه رمز عبور
-	if err := auth.ComparePassword(user.PasswordHash, req.Password); err != nil {
+	if err := auth.ComparePassword(
+		user.PasswordHash,
+		req.Password,
+	); err != nil {
 
 		if appErrors.GetKind(err) == appErrors.KindInvalidInput {
 
@@ -212,6 +216,70 @@ func (
 		)
 	}
 
+	accessToken, refreshToken, expireIn, err := s.issueTokens(
+		ctx,
+		user,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return toProtoAuth(
+			user,
+			accessToken,
+			refreshToken,
+			expireIn,
+		),
+		nil
+}
+
+// OTP Login
+func (
+	s *UserService,
+) OTPLogin(
+	ctx context.Context,
+	req *pb.OTPLoginRequest,
+) (
+	*pb.OTPLoginResponse,
+	error,
+) {
+
+	//  اعتبارسنجی ورودی
+	if req == nil {
+		return nil, appErrors.New(
+			appErrors.KindInvalidInput,
+			"login request cannot be nil",
+		)
+	}
+
+	if req.PhoneNumber == "" {
+		return nil, appErrors.New(
+			appErrors.KindInvalidInput,
+			"phone number is required",
+		)
+	}
+
+	user, err := s.userRepo.GetByEmailOrPhone(ctx, req.PhoneNumber)
+	if err != nil {
+
+		if appErrors.GetKind(err) == appErrors.KindNotFound {
+
+			// برای امنیت، پیام یکسان می‌دهیم
+			return nil, appErrors.New(
+				appErrors.KindUnauthenticated,
+				"invalid phone number or email",
+			)
+
+		}
+
+		// خطاهای داخلی
+		return nil, appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to get user by phone number",
+		)
+	}
+
 	// تولید OTP
 	code, err := auth.GenerateOTP()
 	if err != nil {
@@ -225,15 +293,21 @@ func (
 		Code:        code,
 	}
 
-	if err := s.otpRepo.SaveChallenge(ctx, challenge, otpTTL); err != nil {
+	if err := s.otpRepo.SaveChallenge(
+		ctx,
+		challenge,
+		otpTTL,
+	); err != nil {
+
 		return nil, err
 	}
 
 	// TODO(notification): اینجا باید کد OTP واقعاً برای کاربر پیامک شود.
+	log.Printf("user OTP Code is :%s", code)
 
-	return &pb.LoginResponse{
-		ChallengeId: challenge.ID,
-		RequiresOtp: true,
+	return &pb.OTPLoginResponse{
+		ChallengeId:      challenge.ID,
+		ExpiresInSeconds: int32(otpTTL.Seconds()),
 	}, nil
 }
 
@@ -244,7 +318,7 @@ func (
 	ctx context.Context,
 	req *pb.VerifyOTPRequest,
 ) (
-	*pb.VerifyOTPResponse,
+	*pb.AuthResponse,
 	error,
 ) {
 
@@ -277,12 +351,13 @@ func (
 		return nil, err
 	}
 
-	return &pb.VerifyOTPResponse{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-		ExpiresIn:    expiresIn,
-		User:         toProtoUser(user),
-	}, nil
+	return toProtoAuth(
+			user,
+			accessToken,
+			refreshToken,
+			expiresIn,
+		),
+		nil
 }
 
 // RefreshToken
@@ -292,7 +367,7 @@ func (
 	ctx context.Context,
 	req *pb.RefreshTokenRequest,
 ) (
-	*pb.RefreshTokenResponse,
+	*pb.AuthResponse,
 	error,
 ) {
 
@@ -334,11 +409,13 @@ func (
 		return nil, err
 	}
 
-	return &pb.RefreshTokenResponse{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-		ExpiresIn:    expiresIn,
-	}, nil
+	return toProtoAuth(
+			user,
+			accessToken,
+			refreshToken,
+			expiresIn,
+		),
+		nil
 }
 
 // GetUser

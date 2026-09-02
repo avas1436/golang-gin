@@ -30,7 +30,7 @@ func (
 	ctx context.Context,
 	req *pb.RegisterRequest,
 ) (
-	*pb.RegisterResponse,
+	*pb.AuthResponse,
 	error,
 ) {
 
@@ -43,14 +43,34 @@ func (
 	return resp, nil
 }
 
+// Password Login
+func (
+	s *GRPCServer,
+) PasswordLogin(
+	ctx context.Context,
+	req *pb.PasswordLoginRequest,
+) (
+	*pb.AuthResponse,
+	error,
+) {
+
+	resp, err := s.userService.PasswordLogin(ctx, req)
+
+	if err != nil {
+		return nil, grpcerrors.FromAppError(err, "user-service")
+	}
+
+	return resp, nil
+}
+
 // OTPLogin
 func (
 	s *GRPCServer,
-) Login(
+) OTPLogin(
 	ctx context.Context,
-	req *pb.LoginRequest,
+	req *pb.OTPLoginRequest,
 ) (
-	*pb.LoginResponse,
+	*pb.OTPLoginResponse,
 	error,
 ) {
 
@@ -70,7 +90,7 @@ func (
 	ctx context.Context,
 	req *pb.VerifyOTPRequest,
 ) (
-	*pb.VerifyOTPResponse,
+	*pb.AuthResponse,
 	error,
 ) {
 
@@ -90,7 +110,7 @@ func (
 	ctx context.Context,
 	req *pb.RefreshTokenRequest,
 ) (
-	*pb.RefreshTokenResponse,
+	*pb.AuthResponse,
 	error,
 ) {
 
