@@ -45,9 +45,12 @@ func (c PostgresConfig) DSN() string {
 }
 
 type RedisConfig struct {
-	Addr     string
-	Password string
-	DB       int
+	Addr         string
+	Password     string
+	DB           int
+	PoolSize     int
+	MinIdleConns int
+	ConnMaxIdle  time.Duration
 }
 
 type JWTConfig struct {
@@ -90,6 +93,27 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
+	// این هم مهمه ولی مقدار پیش فرض داره
+	redisPoolSize, err := envInt("REDIS_POOL_SIZE", 10)
+	if err != nil {
+		return nil, err
+	}
+
+	// این هم مهمه ولی مقدار پیش فرض داره
+	redisMinIdleConns, err := envInt("REDIS_MIN_IDLE_CONNS", 2)
+	if err != nil {
+		return nil, err
+	}
+
+	// این هم مهمه ولی مقدار پیش فرض داره
+	redisConnMaxIdle, err := envDuration(
+		"REDIS_CONN_MAX_IDLE",
+		5*time.Minute,
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	// در اینجا مقادیر وارد کانفیگ میشه
 	cfg := &Config{
 		GRPCPort: envString("GRPC_PORT", "50051"),
@@ -104,9 +128,12 @@ func Load() (*Config, error) {
 		},
 
 		Redis: RedisConfig{
-			Addr:     envString("REDIS_ADDR", "localhost:6379"),
-			Password: envString("REDIS_PASSWORD", ""),
-			DB:       redisDB,
+			Addr:         envString("REDIS_ADDR", "localhost:6379"),
+			Password:     envString("REDIS_PASSWORD", ""),
+			DB:           redisDB,
+			PoolSize:     redisPoolSize,
+			MinIdleConns: redisMinIdleConns,
+			ConnMaxIdle:  redisConnMaxIdle,
 		},
 
 		JWT: JWTConfig{
@@ -147,8 +174,12 @@ func envInt(key string, fallback int) (int, error) {
 
 // خروجی زمان را اعتبار سنجی میکند
 func envDuration(
-	key string, fallback time.Duration,
-) (time.Duration, error) {
+	key string,
+	fallback time.Duration,
+) (
+	time.Duration,
+	error,
+) {
 
 	v := os.Getenv(key)
 	if v == "" {

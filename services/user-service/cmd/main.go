@@ -14,6 +14,7 @@ import (
 	"pkg/env"
 	"pkg/postgres"
 	pb "pkg/proto/user"
+	redispkg "pkg/redis"
 	"user-service/config"
 	"user-service/internal/handler"
 	"user-service/internal/repository"
@@ -51,11 +52,16 @@ func main() {
 	defer pool.Close()
 
 	// اتصال به ردیس
-	redisClient, err := repository.NewRedisClient(
+	redisClient, err := redispkg.NewClient(
 		ctx,
-		cfg.Redis.Addr,
-		cfg.Redis.Password,
-		cfg.Redis.DB,
+		redispkg.Config{
+			Addr:         cfg.Redis.Addr,
+			Password:     cfg.Redis.Password,
+			DB:           cfg.Redis.DB,
+			PoolSize:     cfg.Redis.PoolSize,
+			MinIdleConns: cfg.Redis.MinIdleConns,
+			ConnMaxIdle:  cfg.Redis.ConnMaxIdle,
+		},
 	)
 
 	// Terminate service
