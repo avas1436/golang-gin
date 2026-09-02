@@ -11,33 +11,60 @@
 - ✅ بررسی نصب بودن `go` و `protoc`
 - ✅ نصب پلاگین‌های تولید کد گو:
 
-  ```bash
-  go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-  go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
-  ```
+<div dir="ltr">
+
+```bash
+go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+```
+
+</div>
 
 ## ۲. ماژول‌بندی Go (طبق ADR شماره ۰۰۰۱)
 
 - ✅ ساخت `go.mod` مستقل برای `pkg`:
-  ```bash
-  cd pkg && go mod init pkg
-  ```
+
+<div dir="ltr">
+
+```bash
+cd pkg && go mod init pkg
+```
+
+</div>
+
 - ✅ ساخت `go.mod` مستقل برای `user-service`:
-  ```bash
-  cd services/user-service && go mod init user-service
-  ```
+
+<div dir="ltr">
+
+```bash
+cd services/user-service && go mod init user-service
+```
+
+</div>
+
 - ✅ معرفی هر دو ماژول به `go.work` در ریشه پروژه:
-  ```bash
-  go work use ./pkg
-  go work use ./services/user-service
-  ```
+
+<div dir="ltr">
+
+```bash
+go work use ./pkg
+go work use ./services/user-service
+```
+
+</div>
 
 ## ۳. تعریف قرارداد gRPC (Proto)
 
 - ✅ ساخت فایل قرارداد در مسیر:
-  ```
-  pkg/proto/user/user.proto
-  ```
+
+<div dir="ltr">
+
+```bash
+pkg/proto/user/user.proto
+```
+
+</div>
+
 - ✅ تعریف پیام‌ها (messages): `User`, `RegisterRequest/Response`, `LoginRequest/Response`, `VerifyOTPRequest/Response`, `RefreshTokenRequest/Response`, `GetUserRequest`, `LogoutRequest/Response`
 - ✅ تعریف enum نقش‌ها برای RBAC: `Role` (`ROLE_ADMIN`, `ROLE_MEMBER`, `ROLE_VIEWER`)
 - ✅ استفاده از `google.protobuf.Timestamp` برای فیلد `created_at`
@@ -71,9 +98,14 @@ protoc \
   pkg/proto/user/user_grpc.pb.go
   ```
 - ✅ بروزرسانی وابستگی‌های ماژول `pkg`:
-  ```bash
-  cd pkg && go mod tidy
-  ```
+
+<div dir="ltr">
+
+```bash
+cd pkg && go mod tidy
+```
+
+</div>
 
 ## ۵. مدل داخلی دامنه (Domain Model)
 
@@ -90,17 +122,25 @@ protoc \
 
 - ✅ ابتدا نصب golang-migrate برای مدیریت مایگریشن ها
 
-  ```
+<div dir="ltr">
+
+```bash
   go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
-  ```
+```
+
+</div>
 
 - ✅ ایجاد اولین مایگریشن ها برای جدول کاربر و رفرش توکن
 
-  ```
+<div dir="ltr">
+
+```bash
   cd services/user-service
   migrate create -ext sql -dir migrations -seq create_users_table
   migrate create -ext sql -dir migrations -seq create_refresh_tokens_table
-  ```
+```
+
+</div>
 
 - ✅ حالا دقیقا مطابق جدولی که ایجاد کردیم باید محتوی فایل های مایگریشن رو پرکنیم و مقادیر موجود در جداول و ویژگی هر ستون و ایندکس ها و .. رو به صورت دستی بر خلاف کد های پایتونی باید بنویسیم.
 
@@ -108,7 +148,7 @@ protoc \
 
 <div dir="ltr">
 
-```
+```bash
   -- در ترمینال ابونتو
   sudo -u postgres psql
 
@@ -125,7 +165,7 @@ protoc \
 
 <div dir="ltr">
 
-```
+```bash
   migrate //
   -database //
   "postgres://user_service:my_password@localhost:5432/user_service_db?sslmode=disable" //
@@ -236,7 +276,7 @@ JWT_SECRET, JWT_ACCESS_TTL, JWT_REFRESH_TTL
 
 <div dir="ltr">
 
-```
+```bash
 
 cd services/user-service
 go get github.com/redis/go-redis/v9

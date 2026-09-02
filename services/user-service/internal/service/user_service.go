@@ -56,7 +56,8 @@ func (
 ) {
 
 	accessToken, err = s.tokens.GenerateAccessToken(
-		user.ID, string(user.Role),
+		user.ID,
+		string(user.Role),
 	)
 	if err != nil {
 		return "", "", 0, err
@@ -90,7 +91,7 @@ func (
 	ctx context.Context,
 	req *pb.RegisterRequest,
 ) (
-	*pb.RegisterResponse,
+	*pb.AuthResponse,
 	error,
 ) {
 
@@ -120,7 +121,7 @@ func (
 
 	}
 
-	return &pb.RegisterResponse{User: toProtoUser(newUser)}, nil
+	return &pb.AuthResponse{User: toProtoUser(newUser)}, nil
 }
 
 // OTP Login
