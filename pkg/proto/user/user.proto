@@ -1,0 +1,98 @@
+// pkg/proto/user/user.proto
+
+syntax = "proto3";
+
+package user;
+
+import "google/protobuf/timestamp.proto";
+option go_package = "pkg/proto/user";
+
+// RBAC
+enum Role {
+  ROLE_UNSPECIFIED = 0;
+  ROLE_ADMIN = 1;
+  ROLE_MEMBER = 2;
+  ROLE_VIEWER = 3;
+}
+
+// --- Get User ---
+message User {
+  string id = 1;
+  string email = 2;
+  string phone_number = 3;
+  string full_name = 4;
+  Role role = 5;
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp updated_at = 7;
+}
+
+// پاسخ استاندارد به هر گونه احراز هویت
+message AuthResponse {
+  string access_token = 1;
+  string refresh_token = 2;
+  int64 expires_in = 3;
+  User user = 4;
+}
+
+// --- Register ---
+message RegisterRequest {
+  string phone_number = 1;
+  string email = 2;
+  string password = 3;
+  string full_name = 4;
+}
+
+// --- Login ---
+message PasswordLoginRequest {
+  // این فیلد میتواند شماره یا ایمیل باشد
+  string identifier = 1;
+  string password = 2;
+}
+
+// --- Login: OTP (Step 1) ---
+message OTPLoginRequest {
+  string phone_number = 1;
+}
+
+// پاسخ مرحله اول تنها آیدی چالش و مدت زمان اعتبار آن به ثانیه است
+message OTPLoginResponse {
+  string challenge_id = 1;
+  int32 expires_in_seconds = 2;
+}
+
+// --- Login: OTP (Step 2) ---
+message VerifyOTPRequest {
+  string otp_challenge_id = 1;
+  string otp_code = 2;
+}
+
+// پاسخ مرحله دو همان AuthResponse است
+
+// --- RefreshToken ---
+message RefreshTokenRequest {
+  string refresh_token = 1;
+}
+
+// پاسخ رفرش توکن هم مجددا AuthResponse است
+
+// --- get user ---
+message GetUserRequest {
+  string id = 1;
+}
+
+// --- Logout ---
+message LogoutRequest {
+  string refresh_token = 1;
+}
+
+message LogoutResponse {}
+
+service UserService {
+  rpc Register(RegisterRequest) returns (AuthResponse);
+  rpc PasswordLogin(PasswordLoginRequest) returns (AuthResponse);
+  rpc OTPLogin(OTPLoginRequest) returns (OTPLoginResponse);
+  rpc VerifyOTP(VerifyOTPRequest) returns (AuthResponse);
+  rpc RefreshToken(RefreshTokenRequest) returns (AuthResponse);
+  rpc GetUser(GetUserRequest) returns (User);
+  rpc Logout(LogoutRequest) returns (LogoutResponse);
+}
