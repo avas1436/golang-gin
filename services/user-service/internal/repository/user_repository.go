@@ -178,12 +178,13 @@ func (
 	}
 
 	query := `
-		SELECT 
-			id, 
-			email, 
-			phone_number, 
-			full_name, 
-			role, 
+		SELECT
+			id,
+			email,
+			phone_number,
+			full_name,
+			role,
+			password_hash,
 			created_at,
 			updated_at
 		FROM users
@@ -197,6 +198,7 @@ func (
 		&u.PhoneNumber,
 		&u.FullName,
 		&u.Role,
+		&u.PasswordHash,
 		&u.CreatedAt,
 		&u.UpdatedAt,
 	)
