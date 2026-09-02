@@ -9,6 +9,22 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+// ساخت پاسخ احراز هویت
+func toProtoAuth(
+	u *model.User,
+	access_token string,
+	refresh_token string,
+	expires_in int64,
+) *pb.AuthResponse {
+
+	return &pb.AuthResponse{
+		AccessToken:  access_token,
+		RefreshToken: refresh_token,
+		ExpiresIn:    expires_in,
+		User:         toProtoUser(u),
+	}
+}
+
 // تبدیل اطلاعات کاربر به پروتو
 func toProtoUser(u *model.User) *pb.User {
 	return &pb.User{

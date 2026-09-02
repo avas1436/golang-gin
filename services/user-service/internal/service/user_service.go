@@ -49,13 +49,13 @@ func (
 	ctx context.Context,
 	user *model.User,
 ) (
-	accessToken string,
-	refreshToken string,
-	expiresIn int64,
+	access_token string,
+	refresh_token string,
+	expires_in int64,
 	err error,
 ) {
 
-	accessToken, err = s.tokens.GenerateAccessToken(
+	accessToken, err := s.tokens.GenerateAccessToken(
 		user.ID,
 		string(user.Role),
 	)
@@ -63,7 +63,7 @@ func (
 		return "", "", 0, err
 	}
 
-	refreshToken, err = s.tokens.GenerateRefreshToken()
+	refreshToken, err := s.tokens.GenerateRefreshToken()
 	if err != nil {
 		return "", "", 0, err
 	}
@@ -121,7 +121,21 @@ func (
 
 	}
 
-	return &pb.AuthResponse{User: toProtoUser(newUser)}, nil
+	accessToken, refreshToken, expireIn, err := s.issueTokens(
+		ctx,
+		newUser,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return toProtoAuth(
+			newUser,
+			accessToken,
+			refreshToken,
+			expireIn,
+		),
+		nil
 }
 
 // OTP Login
