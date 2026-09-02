@@ -46,7 +46,7 @@ func (
 // OTPLogin
 func (
 	s *GRPCServer,
-) OTPLogin(
+) Login(
 	ctx context.Context,
 	req *pb.LoginRequest,
 ) (
