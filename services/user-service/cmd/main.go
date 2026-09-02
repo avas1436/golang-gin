@@ -20,6 +20,7 @@ import (
 	"user-service/internal/service"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 )
 
 func main() {
@@ -89,6 +90,10 @@ func main() {
 
 	grpcServer := grpc.NewServer()
 	pb.RegisterUserServiceServer(grpcServer, userHandler)
+
+	// فعال کردن رفلکشن ها در سرور تا بتوانیم از طریق ابزار هایی مانند
+	// gpcurl با سرور ارتباط برقرار کنیم
+	reflection.Register(grpcServer)
 
 	lis, err := net.Listen("tcp", ":"+cfg.GRPCPort)
 	if err != nil {
