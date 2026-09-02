@@ -5,14 +5,21 @@ package main
 import (
 	"context"
 	"log"
+	"net"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"pkg/auth"
 	"pkg/env"
 	"pkg/postgres"
-
+	pb "pkg/proto/user"
 	"user-service/config"
+	"user-service/internal/handler"
 	"user-service/internal/repository"
 	"user-service/internal/service"
+
+	"google.golang.org/grpc"
 )
 
 func main() {
@@ -77,7 +84,35 @@ func main() {
 		cfg.JWT.RefreshTokenTTL,
 	)
 
-	_ = userService // هنوز لایه هندلر نوشته نشده
+	// اتصال به هندلر gRPC و ثبت آن در سرور gRPC
+	userHandler := handler.NewGRPCServer(userService)
 
-	log.Println("User service started")
+	grpcServer := grpc.NewServer()
+	pb.RegisterUserServiceServer(grpcServer, userHandler)
+
+	lis, err := net.Listen("tcp", ":"+cfg.GRPCPort)
+	if err != nil {
+		log.Fatalf("failed to listen on port %s: %v", cfg.GRPCPort, err)
+	}
+
+	// Graceful shutdown:
+	// وقتی سیگنال SIGINT/SIGTERM دریافت شود، به‌جای قطع ناگهانی
+	// اتصال‌ها، فرصت می‌دهیم درخواست‌های در حال پردازش را تمام
+	// کند، بعد سرور را متوقف کند.
+	go func() {
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+		<-sigCh
+
+		log.Println("shutting down user service gracefully...")
+		grpcServer.GracefulStop()
+	}()
+
+	log.Printf("user service listening on :%s", cfg.GRPCPort)
+
+	// Serve بلاک‌کننده است؛ تا وقتی GracefulStop صدا زده نشود، این
+	// خط برنمی‌گردد.
+	if err := grpcServer.Serve(lis); err != nil {
+		log.Fatalf("failed to serve grpc server: %v", err)
+	}
 }
