@@ -71,7 +71,7 @@ func ParseAccessToken(
 	token, err := jwt.ParseWithClaims(
 		tokenString,
 		claims,
-		func(t *jwt.Token) (interface{}, error) {
+		func(t *jwt.Token) (any, error) {
 			// این چک جلوی حمله‌ی "alg confusion" رو می‌گیره: بدون این،
 			// یه کلاینت مخرب می‌تونه هدر توکن رو عوض کنه و الگوریتم
 			// امضا رو به چیزی غیر از HMAC تغییر بده.
