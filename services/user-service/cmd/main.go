@@ -111,8 +111,11 @@ func main() {
 	// در این قسمت میدل ور ها وارد سرور میشن
 	grpcServer := grpc.NewServer(
 		grpc.ChainUnaryInterceptor(
+			// بیرونی ترین ریکاوری است تا مانع از دسترس خارج شدن سرور بشه
 			grpcmiddleware.RecoveryInterceptor(),
+			// لایه میانی لاگ میکنه
 			grpcmiddleware.LoggingInterceptor(),
+			// درونی ترین لایه احراز هویت میکنه
 			grpcmiddleware.AuthInterceptor(tokens, publicMethods),
 		),
 	)

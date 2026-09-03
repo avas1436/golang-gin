@@ -436,6 +436,24 @@ func (
 		)
 	}
 
+	// ابتدا مقادیر احراز هویت استخراج میشه و اگه مشکلی داشت ارور
+	claims, ok := auth.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, appErrors.New(
+			appErrors.KindUnauthenticated,
+			"authentication required",
+		)
+	}
+
+	// در این قسمت RBAC کنترل میشود
+	// تنها خود کاربران و ادمین ها میتوانند دسترسی پیدا کنند
+	if claims.UserID != req.Id && claims.Role != string(model.RoleAdmin) {
+		return nil, appErrors.New(
+			appErrors.KindPermissionDenied,
+			"you are not allowed to view this user's profile",
+		)
+	}
+
 	user, err := s.userRepo.GetByID(ctx, req.Id)
 	if err != nil {
 
