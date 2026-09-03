@@ -12,6 +12,7 @@ import (
 
 	"pkg/auth"
 	"pkg/env"
+	"pkg/grpcmiddleware"
 	"pkg/postgres"
 	pb "pkg/proto/user"
 	redispkg "pkg/redis"
@@ -81,7 +82,10 @@ func main() {
 	refreshTokenRepo := repository.NewRefreshTokenRepository(pool)
 	otpRepo := repository.NewOTPRepository(redisClient)
 
-	tokens := auth.NewTokenManager(cfg.JWT.Secret, cfg.JWT.AccessTokenTTL)
+	tokens := auth.NewTokenManager(
+		cfg.JWT.Secret,
+		cfg.JWT.AccessTokenTTL,
+	)
 
 	userService := service.NewUserService(
 		userRepo,
@@ -94,7 +98,24 @@ func main() {
 	// اتصال به هندلر gRPC و ثبت آن در سرور gRPC
 	userHandler := handler.NewGRPCServer(userService)
 
-	grpcServer := grpc.NewServer()
+	// این ها لیست متد های عمومی است
+	// هر متدی در این لیست نباشد در صورت فراخانی false میدهد
+	publicMethods := map[string]bool{
+		pb.UserService_Register_FullMethodName:      true,
+		pb.UserService_PasswordLogin_FullMethodName: true,
+		pb.UserService_OTPLogin_FullMethodName:      true,
+		pb.UserService_VerifyOTP_FullMethodName:     true,
+		pb.UserService_RefreshToken_FullMethodName:  true,
+	}
+
+	// در این قسمت میدل ور ها وارد سرور میشن
+	grpcServer := grpc.NewServer(
+		grpc.ChainUnaryInterceptor(
+			grpcmiddleware.RecoveryInterceptor(),
+			grpcmiddleware.LoggingInterceptor(),
+			grpcmiddleware.AuthInterceptor(tokens, publicMethods),
+		),
+	)
 	pb.RegisterUserServiceServer(grpcServer, userHandler)
 
 	// فعال کردن رفلکشن ها در سرور تا بتوانیم از طریق ابزار هایی مانند
