@@ -56,6 +56,8 @@ func (
 	err error,
 ) {
 
+	// start := time.Now()
+
 	accessToken, err := s.tokens.GenerateAccessToken(
 		user.ID,
 		string(user.Role),
@@ -64,10 +66,16 @@ func (
 		return "", "", 0, err
 	}
 
+	// log.Printf("GenerateAccessToken: %s", time.Since(start))
+
+	// start = time.Now()
+
 	refreshToken, err := s.tokens.GenerateRefreshToken()
 	if err != nil {
 		return "", "", 0, err
 	}
+
+	// log.Printf("CreateRefreshToken: %s", time.Since(start))
 
 	rt := &model.RefreshToken{
 		UserID:    user.ID,
@@ -150,6 +158,8 @@ func (
 	error,
 ) {
 
+	// start := time.Now()
+
 	//  اعتبارسنجی ورودی
 	if req == nil {
 		return nil, appErrors.New(
@@ -172,6 +182,10 @@ func (
 		)
 	}
 
+	// log.Printf("Validation: %s", time.Since(start))
+
+	// start = time.Now()
+
 	user, err := s.userRepo.GetByEmailOrPhone(ctx, req.Identifier)
 	if err != nil {
 
@@ -192,6 +206,10 @@ func (
 			"failed to get user by phone number or email",
 		)
 	}
+
+	// log.Printf("GetUser: %s", time.Since(start))
+
+	// start = time.Now()
 
 	// مقایسه رمز عبور
 	if err := auth.ComparePassword(
@@ -215,6 +233,8 @@ func (
 			"failed to compare password",
 		)
 	}
+
+	// log.Printf("ComparePassword: %s", time.Since(start))
 
 	accessToken, refreshToken, expireIn, err := s.issueTokens(
 		ctx,
@@ -433,6 +453,24 @@ func (
 		return nil, appErrors.New(
 			appErrors.KindInvalidInput,
 			"get user request is nil",
+		)
+	}
+
+	// ابتدا مقادیر احراز هویت استخراج میشه و اگه مشکلی داشت ارور
+	claims, ok := auth.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, appErrors.New(
+			appErrors.KindUnauthenticated,
+			"authentication required",
+		)
+	}
+
+	// در این قسمت RBAC کنترل میشود
+	// تنها خود کاربران و ادمین ها میتوانند دسترسی پیدا کنند
+	if claims.UserID != req.Id && claims.Role != string(model.RoleAdmin) {
+		return nil, appErrors.New(
+			appErrors.KindPermissionDenied,
+			"you are not allowed to view this user's profile",
 		)
 	}
 
