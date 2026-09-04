@@ -15,6 +15,7 @@ import (
 	"pkg/grpcmiddleware"
 	"pkg/postgres"
 	pb "pkg/proto/user"
+	"pkg/ratelimit"
 	redispkg "pkg/redis"
 	"user-service/config"
 	"user-service/internal/handler"
@@ -108,6 +109,40 @@ func main() {
 		pb.UserService_RefreshToken_FullMethodName:  true,
 	}
 
+	// تعریف لیمیتر
+	limiter := ratelimit.New(redisClient)
+
+	// لیست متد ها به همراه محدودیت ها
+	rateLimitRules := map[string]grpcmiddleware.RateLimitRule{
+		pb.UserService_Register_FullMethodName: {
+			Limit: ratelimit.PerMinute(5),
+		},
+
+		pb.UserService_PasswordLogin_FullMethodName: {
+			Limit: ratelimit.PerMinute(5),
+		},
+
+		pb.UserService_OTPLogin_FullMethodName: {
+			Limit: ratelimit.PerMinute(3),
+		},
+
+		pb.UserService_VerifyOTP_FullMethodName: {
+			Limit: ratelimit.PerMinute(5),
+		},
+
+		pb.UserService_RefreshToken_FullMethodName: {
+			Limit: ratelimit.PerMinute(10),
+		},
+
+		pb.UserService_GetUser_FullMethodName: {
+			Limit: ratelimit.PerMinute(60),
+		},
+
+		pb.UserService_Logout_FullMethodName: {
+			Limit: ratelimit.PerMinute(10),
+		},
+	}
+
 	// در این قسمت میدل ور ها وارد سرور میشن
 	grpcServer := grpc.NewServer(
 		grpc.ChainUnaryInterceptor(
@@ -115,6 +150,12 @@ func main() {
 			grpcmiddleware.RecoveryInterceptor(),
 			// لایه میانی لاگ میکنه
 			grpcmiddleware.LoggingInterceptor(),
+			// لایه محدود کننده سرعت
+			grpcmiddleware.RateLimitInterceptor(
+				limiter,
+				rateLimitRules,
+				nil,
+			),
 			// درونی ترین لایه احراز هویت میکنه
 			grpcmiddleware.AuthInterceptor(tokens, publicMethods),
 		),
