@@ -3,9 +3,8 @@
 package config
 
 import (
-	"fmt"
-	"os"
-	"strconv"
+	commonConfig "pkg/config"
+	"pkg/env"
 	"time"
 )
 
@@ -14,43 +13,9 @@ import (
 type Config struct {
 	GRPCPort string
 
-	Postgres PostgresConfig
-	Redis    RedisConfig
+	Postgres commonConfig.PostgresConfig
+	Redis    commonConfig.RedisConfig
 	JWT      JWTConfig
-}
-
-type PostgresConfig struct {
-	Host     string
-	Port     string
-	User     string
-	Password string
-	DBName   string
-	SSLMode  string
-}
-
-// Data Source Name
-// DSN آدرس اتصال را به فرمتی که pgxpool انتظار دارد می‌سازد.
-func (c PostgresConfig) DSN() string {
-
-	return fmt.Sprintf(
-		"postgres://%s:%s@%s:%s/%s?sslmode=%s",
-		c.User,
-		c.Password,
-		c.Host,
-		c.Port,
-		c.DBName,
-		c.SSLMode,
-	)
-
-}
-
-type RedisConfig struct {
-	Addr         string
-	Password     string
-	DB           int
-	PoolSize     int
-	MinIdleConns int
-	ConnMaxIdle  time.Duration
 }
 
 type JWTConfig struct {
@@ -64,49 +29,49 @@ type JWTConfig struct {
 func Load() (*Config, error) {
 
 	// fail-fast
-	dbPassword, err := requireEnv("DB_PASSWORD")
+	dbPassword, err := env.Require("DB_PASSWORD")
 	if err != nil {
 		return nil, err
 	}
 
 	// fail-fast
-	jwtSecret, err := requireEnv("JWT_SECRET")
+	jwtSecret, err := env.Require("JWT_SECRET")
 	if err != nil {
 		return nil, err
 	}
 
 	// این هم مهمه ولی مقدار پیش فرض داره
-	accessTTL, err := envDuration("JWT_ACCESS_TTL", 15*time.Minute)
+	accessTTL, err := env.Duration("JWT_ACCESS_TTL", 15*time.Minute)
 	if err != nil {
 		return nil, err
 	}
 
 	// این هم مهمه ولی مقدار پیش فرض داره
-	refreshTTL, err := envDuration("JWT_REFRESH_TTL", 7*24*time.Hour)
+	refreshTTL, err := env.Duration("JWT_REFRESH_TTL", 7*24*time.Hour)
 	if err != nil {
 		return nil, err
 	}
 
 	// این هم مهمه ولی مقدار پیش فرض داره
-	redisDB, err := envInt("REDIS_DB", 0)
+	redisDB, err := env.Int("REDIS_DB", 0)
 	if err != nil {
 		return nil, err
 	}
 
 	// این هم مهمه ولی مقدار پیش فرض داره
-	redisPoolSize, err := envInt("REDIS_POOL_SIZE", 10)
+	redisPoolSize, err := env.Int("REDIS_POOL_SIZE", 10)
 	if err != nil {
 		return nil, err
 	}
 
 	// این هم مهمه ولی مقدار پیش فرض داره
-	redisMinIdleConns, err := envInt("REDIS_MIN_IDLE_CONNS", 2)
+	redisMinIdleConns, err := env.Int("REDIS_MIN_IDLE_CONNS", 2)
 	if err != nil {
 		return nil, err
 	}
 
 	// این هم مهمه ولی مقدار پیش فرض داره
-	redisConnMaxIdle, err := envDuration(
+	redisConnMaxIdle, err := env.Duration(
 		"REDIS_CONN_MAX_IDLE",
 		5*time.Minute,
 	)
@@ -116,20 +81,20 @@ func Load() (*Config, error) {
 
 	// در اینجا مقادیر وارد کانفیگ میشه
 	cfg := &Config{
-		GRPCPort: envString("GRPC_PORT", "50051"),
+		GRPCPort: env.String("GRPC_PORT", "50051"),
 
-		Postgres: PostgresConfig{
-			Host:     envString("DB_HOST", "localhost"),
-			Port:     envString("DB_PORT", "5432"),
-			User:     envString("DB_USER", "user_service"),
+		Postgres: commonConfig.PostgresConfig{
+			Host:     env.String("DB_HOST", "localhost"),
+			Port:     env.String("DB_PORT", "5432"),
+			User:     env.String("DB_USER", "user_service"),
 			Password: dbPassword,
-			DBName:   envString("DB_NAME", "user_service_db"),
-			SSLMode:  envString("DB_SSLMODE", "disable"),
+			DBName:   env.String("DB_NAME", "user_service_db"),
+			SSLMode:  env.String("DB_SSLMODE", "disable"),
 		},
 
-		Redis: RedisConfig{
-			Addr:         envString("REDIS_ADDR", "localhost:6379"),
-			Password:     envString("REDIS_PASSWORD", ""),
+		Redis: commonConfig.RedisConfig{
+			Addr:         env.String("REDIS_ADDR", "localhost:6379"),
+			Password:     env.String("REDIS_PASSWORD", ""),
 			DB:           redisDB,
 			PoolSize:     redisPoolSize,
 			MinIdleConns: redisMinIdleConns,
@@ -144,66 +109,4 @@ func Load() (*Config, error) {
 	}
 
 	return cfg, nil
-}
-
-// این یک تابع کمکی است و میگوید اگر مقدار بود مقدار را بده در غیر این صورت فالبک بده
-func envString(key, fallback string) string {
-
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-
-	return fallback
-}
-
-// خروجی عدد میدهد
-func envInt(key string, fallback int) (int, error) {
-
-	v := os.Getenv(key)
-	if v == "" {
-		return fallback, nil
-	}
-
-	n, err := strconv.Atoi(v)
-	if err != nil {
-		return 0, fmt.Errorf("invalid value for %s: %w", key, err)
-	}
-
-	return n, nil
-}
-
-// خروجی زمان را اعتبار سنجی میکند
-func envDuration(
-	key string,
-	fallback time.Duration,
-) (
-	time.Duration,
-	error,
-) {
-
-	v := os.Getenv(key)
-	if v == "" {
-		return fallback, nil
-	}
-
-	d, err := time.ParseDuration(v)
-	if err != nil {
-		return 0, fmt.Errorf("invalid duration for %s: %w", key, err)
-	}
-
-	return d, nil
-}
-
-// درصورت نبود متغیر ارور میدهد
-func requireEnv(key string) (string, error) {
-
-	v := os.Getenv(key)
-	if v == "" {
-		return "", fmt.Errorf(
-			"required environment variable %s is not set",
-			key,
-		)
-	}
-
-	return v, nil
 }
