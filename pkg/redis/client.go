@@ -20,6 +20,8 @@ type Config struct {
 	ConnMaxIdle  time.Duration // حداکثر زمانی که یک کانکشن بیکار می‌تواند باز بماند
 }
 
+type Client = redis.Client
+
 // NewClient یک کلاینت ردیس با تنظیمات بهینه و تست اتصال اولیه می‌سازد
 func NewClient(
 	ctx context.Context,
