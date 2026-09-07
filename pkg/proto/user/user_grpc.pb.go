@@ -10,6 +10,7 @@ package user
 
 import (
 	context "context"
+
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
@@ -34,13 +35,60 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type UserServiceClient interface {
-	Register(ctx context.Context, in *RegisterRequest, opts ...grpc.CallOption) (*AuthResponse, error)
-	PasswordLogin(ctx context.Context, in *PasswordLoginRequest, opts ...grpc.CallOption) (*AuthResponse, error)
-	OTPLogin(ctx context.Context, in *OTPLoginRequest, opts ...grpc.CallOption) (*OTPLoginResponse, error)
-	VerifyOTP(ctx context.Context, in *VerifyOTPRequest, opts ...grpc.CallOption) (*AuthResponse, error)
-	RefreshToken(ctx context.Context, in *RefreshTokenRequest, opts ...grpc.CallOption) (*AuthResponse, error)
-	GetUser(ctx context.Context, in *GetUserRequest, opts ...grpc.CallOption) (*User, error)
-	Logout(ctx context.Context, in *LogoutRequest, opts ...grpc.CallOption) (*LogoutResponse, error)
+	Register(
+		ctx context.Context,
+		in *RegisterRequest, opts ...grpc.CallOption,
+	) (
+		*AuthResponse,
+		error,
+	)
+	PasswordLogin(
+		ctx context.Context,
+		in *PasswordLoginRequest,
+		opts ...grpc.CallOption,
+	) (
+		*AuthResponse,
+		error,
+	)
+	OTPLogin(
+		ctx context.Context,
+		in *OTPLoginRequest,
+		opts ...grpc.CallOption,
+	) (
+		*OTPLoginResponse,
+		error,
+	)
+	VerifyOTP(
+		ctx context.Context,
+		in *VerifyOTPRequest,
+		opts ...grpc.CallOption,
+	) (
+		*AuthResponse,
+		error,
+	)
+	RefreshToken(
+		ctx context.Context,
+		in *RefreshTokenRequest,
+		opts ...grpc.CallOption,
+	) (
+		*AuthResponse,
+		error,
+	)
+	GetUser(
+		ctx context.Context,
+		in *GetUserRequest, opts ...grpc.CallOption,
+	) (
+		*User,
+		error,
+	)
+	Logout(
+		ctx context.Context,
+		in *LogoutRequest,
+		opts ...grpc.CallOption,
+	) (
+		*LogoutResponse,
+		error,
+	)
 }
 
 type userServiceClient struct {

@@ -57,14 +57,20 @@ func (h *Handler) Register(c *gin.Context) {
 func (h *Handler) PasswordLogin(c *gin.Context) {
 	var body passwordLoginRequestBody
 	if err := c.ShouldBindJSON(&body); err != nil {
-		c.JSON(http.StatusBadRequest, errorResponse{Error: "invalid request body"})
+		c.JSON(
+			http.StatusBadRequest,
+			errorResponse{Error: "invalid request body"},
+		)
 		return
 	}
 
-	resp, err := h.userClient.PasswordLogin(c.Request.Context(), &pb.PasswordLoginRequest{
-		Identifier: body.Identifier,
-		Password:   body.Password,
-	})
+	resp, err := h.userClient.PasswordLogin(
+		c.Request.Context(),
+		&pb.PasswordLoginRequest{
+			Identifier: body.Identifier,
+			Password:   body.Password,
+		},
+	)
 	if err != nil {
 		httperrors.Respond(c, err)
 		return
