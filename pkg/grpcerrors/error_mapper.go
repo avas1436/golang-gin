@@ -108,6 +108,11 @@ func FromAppError(err error, domain string) error {
 			codes.Internal,
 			"internal server error",
 		)
+		// برای دیباگ کردن میشه این قسمت رو استفاده کرد
+		// st := status.New(
+		// 	codes.Internal,
+		// 	err.Error(),
+		// )
 
 		// جزییات ارور هم به آن افزوده میشود تا همان فرمت استاندارد دیگر ارور ها باشد
 		stWithDetails, detailErr := st.WithDetails(
