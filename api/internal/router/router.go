@@ -3,7 +3,7 @@
 package router
 
 import (
-	"api/internal/handler"
+	"api/internal/handler/auth"
 	"api/internal/middleware"
 	"pkg/ratelimit"
 
@@ -14,11 +14,11 @@ import (
 
 // Handlers شامل تمامی هندلرهای سرویس‌های مختلف است
 type Handlers struct {
-	Auth *handler.AuthHandler
-	// Order        *handler.OrderHandler
-	// Product      *handler.ProductHandler
-	// Payment      *handler.PaymentHandler
-	// Notification *handler.NotificationHandler
+	Auth *auth.Handler
+	// Order        *auth.OrderHandler
+	// Product      *auth.ProductHandler
+	// Payment      *auth.PaymentHandler
+	// Notification *auth.NotificationHandler
 }
 
 type Config struct {
@@ -58,7 +58,7 @@ func Setup(cfg Config) {
 // ثبت ماژولار روت‌های احراز هویت و کاربران
 func registerAuthRoutes(
 	rg *gin.RouterGroup,
-	h *handler.AuthHandler,
+	h *auth.Handler,
 	limiter ratelimit.Limiter,
 ) {
 

@@ -5,7 +5,7 @@ package app
 import (
 	"api/config"
 	"api/internal/client"
-	"api/internal/handler"
+	"api/internal/handler/auth"
 	"api/internal/router"
 	"context"
 	"errors"
@@ -27,7 +27,7 @@ type App struct {
 	cfg         *config.Config
 	httpServer  *http.Server
 	redisClient *redispkg.Client
-	userClient  *client.UserClient
+	clients     *client.Clients
 }
 
 func New(ctx context.Context) (*App, error) {
@@ -65,14 +65,19 @@ func New(ctx context.Context) (*App, error) {
 		}
 	}()
 
-	// 2. gRPC Clients
-	userClient, err := client.NewUserClient(cfg.UserServiceAddr)
+	// 2. gRPC Clients Aggregation
+	clients, err := client.New(
+		client.Config{
+			UserServiceAddr: cfg.UserServiceAddr,
+			// OrderServiceAddr: cfg.OrderServiceAddr,
+		},
+	)
 	if err != nil {
-		return nil, fmt.Errorf("connect user-service: %w", err)
+		return nil, fmt.Errorf("failed to initialize grpc clients: %w", err)
 	}
 	defer func() {
 		if !success {
-			_ = userClient.Close()
+			_ = clients.Close()
 		}
 	}()
 
@@ -80,9 +85,9 @@ func New(ctx context.Context) (*App, error) {
 	limiter := ratelimit.New(redisClient)
 
 	// 5. Handlers
-	authHandler := handler.NewAuthHandler(userClient, cfg.Cookie)
-	// orderHandler := handler.NewOrderHandler(userClient, cfg.Cookie)
-	// productHandler := handler.NewProductHandler(userClient, cfg.Cookie)
+	authHandler := auth.NewHandler(clients.User, cfg.Cookie)
+	// orderHandler := order.NewHandler(clients.Order, cfg.Cookie)
+	// productHandler := product.NewHandler(clients.Product, cfg.Cookie)
 
 	handlers := router.Handlers{
 		Auth: authHandler,
@@ -115,7 +120,7 @@ func New(ctx context.Context) (*App, error) {
 		cfg:         cfg,
 		httpServer:  httpServer,
 		redisClient: redisClient,
-		userClient:  userClient,
+		clients:     clients,
 	}, nil
 }
 
@@ -167,9 +172,12 @@ func (a *App) Close() error {
 
 	var errs []error
 
-	if a.userClient != nil {
-		if err := a.userClient.Close(); err != nil {
-			errs = append(errs, fmt.Errorf("user client close: %w", err))
+	if a.clients != nil {
+		if err := a.clients.Close(); err != nil {
+			errs = append(
+				errs,
+				fmt.Errorf("grpc clients close: %w", err),
+			)
 		}
 	}
 
@@ -177,9 +185,7 @@ func (a *App) Close() error {
 		if err := a.redisClient.Close(); err != nil {
 			errs = append(
 				errs,
-				fmt.Errorf("redis client close: %w",
-					err,
-				),
+				fmt.Errorf("redis client close: %w", err),
 			)
 		}
 	}
