@@ -57,9 +57,6 @@ func New(ctx context.Context) (*App, error) {
 		log.Fatalf("failed to connect to postgres: %v", err)
 	}
 
-	// بعد از بستن برنامه اتصال هم قطع میشود
-	defer pool.Close()
-
 	// اتصال به ردیس
 	redisClient, err := redispkg.NewClient(
 		ctx,

@@ -1,0 +1,317 @@
+basePath: /
+definitions:
+  auth.authResponseBody:
+    properties:
+      access_token:
+        example: eyJhbGciOiJIUzI1Ni...
+        type: string
+      expires_in:
+        example: 900
+        type: integer
+      user:
+        $ref: '#/definitions/auth.userBody'
+    type: object
+  auth.errorResponse:
+    properties:
+      error:
+        example: invalid request body
+        type: string
+    type: object
+  auth.messageResponse:
+    properties:
+      message:
+        example: logged out
+        type: string
+    type: object
+  auth.otpLoginRequestBody:
+    properties:
+      phone_number:
+        example: "09123456789"
+        type: string
+    required:
+    - phone_number
+    type: object
+  auth.otpLoginResponseBody:
+    properties:
+      challenge_id:
+        example: ch_987654321
+        type: string
+      expires_in_seconds:
+        example: 120
+        type: integer
+    type: object
+  auth.passwordLoginRequestBody:
+    properties:
+      identifier:
+        example: user@example.com
+        type: string
+      password:
+        example: SecretPass123
+        type: string
+    required:
+    - identifier
+    - password
+    type: object
+  auth.registerRequestBody:
+    properties:
+      email:
+        example: user@example.com
+        type: string
+      full_name:
+        example: John Doe
+        type: string
+      password:
+        example: SecretPass123
+        type: string
+      phone_number:
+        example: "+989123456789"
+        type: string
+    required:
+    - password
+    - phone_number
+    type: object
+  auth.userBody:
+    properties:
+      created_at:
+        example: "2026-01-01T10:00:00Z"
+        type: string
+      email:
+        example: user@example.com
+        type: string
+      full_name:
+        example: John Doe
+        type: string
+      id:
+        example: usr_12345
+        type: string
+      phone_number:
+        example: "+989123456789"
+        type: string
+      role:
+        example: USER
+        type: string
+      updated_at:
+        example: "2026-01-01T10:00:00Z"
+        type: string
+    type: object
+  auth.verifyOTPRequestBody:
+    properties:
+      otp_challenge_id:
+        example: ch_987654321
+        type: string
+      otp_code:
+        example: "123456"
+        type: string
+    required:
+    - otp_challenge_id
+    - otp_code
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: Enterprise Microservices API Gateway
+  title: API Gateway
+  version: "1.0"
+paths:
+  /api/v1/auth/login/otp:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: شماره همراه
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.otpLoginRequestBody'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.otpLoginResponseBody'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/auth.errorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/auth.errorResponse'
+      summary: ارسال کد OTP
+      tags:
+      - Auth
+  /api/v1/auth/login/otp/verify:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: شناسه چالش و کد
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.verifyOTPRequestBody'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.authResponseBody'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/auth.errorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/auth.errorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/auth.errorResponse'
+      summary: تایید کد OTP
+      tags:
+      - Auth
+  /api/v1/auth/login/password:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: اطلاعات ورود
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.passwordLoginRequestBody'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.authResponseBody'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/auth.errorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/auth.errorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/auth.errorResponse'
+      summary: ورود با رمز عبور
+      tags:
+      - Auth
+  /api/v1/auth/logout:
+    post:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.messageResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/auth.errorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/auth.errorResponse'
+      summary: خروج از حساب کاربری
+      tags:
+      - Auth
+  /api/v1/auth/refresh:
+    post:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.authResponseBody'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/auth.errorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/auth.errorResponse'
+      summary: تجدید توکن دسترسی
+      tags:
+      - Auth
+  /api/v1/auth/register:
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: اطلاعات ثبت نام
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/auth.registerRequestBody'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.authResponseBody'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/auth.errorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/auth.errorResponse'
+      summary: ثبت نام کاربر
+      tags:
+      - Auth
+  /api/v1/users/{id}:
+    get:
+      parameters:
+      - description: شناسه کاربر
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.userBody'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/auth.errorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/auth.errorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/auth.errorResponse'
+      security:
+      - BearerAuth: []
+      summary: دریافت اطلاعات کاربر
+      tags:
+      - Users
+securityDefinitions:
+  BearerAuth:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

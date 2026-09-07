@@ -3,7 +3,11 @@
 package env
 
 import (
+	"fmt"
 	"log"
+	"os"
+	"strconv"
+	"time"
 
 	"github.com/joho/godotenv"
 )
@@ -32,4 +36,83 @@ func Load(paths ...string) {
 			paths,
 		)
 	}
+}
+
+// این یک تابع کمکی است و میگوید اگر مقدار بود مقدار را بده در غیر این صورت فالبک بده
+func String(key, fallback string) string {
+
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+
+	return fallback
+}
+
+// خروجی عدد میدهد
+func Int(key string, fallback int) (int, error) {
+
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback, nil
+	}
+
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return 0, fmt.Errorf("invalid value for %s: %w", key, err)
+	}
+
+	return n, nil
+}
+
+// Bool مقدار بولین متغیر محیطی را برمی‌گرداند.
+func Bool(key string, fallback bool) (bool, error) {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback, nil
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		return false, fmt.Errorf(
+			"invalid boolean value for %s: %w",
+			key,
+			err,
+		)
+	}
+	return b, nil
+}
+
+// خروجی زمان را اعتبار سنجی میکند
+func Duration(
+	key string,
+	fallback time.Duration,
+) (
+	time.Duration,
+	error,
+) {
+
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback, nil
+	}
+
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		return 0, fmt.Errorf("invalid duration for %s: %w", key, err)
+	}
+
+	return d, nil
+}
+
+// درصورت نبود متغیر ارور میدهد
+func Require(key string) (string, error) {
+
+	v := os.Getenv(key)
+	if v == "" {
+		return "", fmt.Errorf(
+			"required environment variable %s is not set",
+			key,
+		)
+	}
+
+	return v, nil
 }
