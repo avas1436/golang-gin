@@ -5,6 +5,7 @@ package config
 import (
 	commonConfig "pkg/config"
 	"pkg/env"
+	"time"
 )
 
 type Config struct {
@@ -12,6 +13,14 @@ type Config struct {
 
 	Postgres commonConfig.PostgresConfig
 	Redis    commonConfig.RedisConfig
+
+	JWT JWTConfig
+}
+
+// برای بررسی نقش کاربر ادمین به این قسمت نیاز داریم
+type JWTConfig struct {
+	Secret         string
+	AccessTokenTTL time.Duration
 }
 
 // Load مقادیر را از متغیرهای محیطی می‌خواند.
@@ -20,6 +29,17 @@ func Load() (*Config, error) {
 
 	// fail-fast: بدون پسورد دیتابیس سرویس نباید اصلاً بالا بیاد
 	dbPassword, err := env.Require("DB_PASSWORD")
+	if err != nil {
+		return nil, err
+	}
+
+	// fail-fast
+	jwtSecret, err := env.Require("JWT_SECRET")
+	if err != nil {
+		return nil, err
+	}
+
+	accessTTL, err := env.Duration("JWT_ACCESS_TTL", 15*time.Minute)
 	if err != nil {
 		return nil, err
 	}
@@ -66,6 +86,11 @@ func Load() (*Config, error) {
 			PoolSize:     redisPoolSize,
 			MinIdleConns: redisMinIdleConns,
 			ConnMaxIdle:  redisConnMaxIdle,
+		},
+
+		JWT: JWTConfig{
+			Secret:         jwtSecret,
+			AccessTokenTTL: accessTTL,
 		},
 	}
 
