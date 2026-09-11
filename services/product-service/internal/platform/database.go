@@ -11,14 +11,6 @@ import (
 	"go.uber.org/fx"
 )
 
-var Module = fx.Module(
-	"platform",
-	fx.Provide(
-		NewPostgresDB,
-		NewRedisClient,
-	),
-)
-
 // اتصال دیتابیس را می‌سازد و به اینترفیس DBTX متصل می‌کند
 func NewPostgresDB(
 	ctx context.Context,
@@ -29,7 +21,6 @@ func NewPostgresDB(
 	error,
 ) {
 
-	// فرض بر این است که پکیج pkg/postgres تابعی برای ساخت pool دارد
 	pool, err := postgres.NewPool(ctx, cfg.Postgres.DSN())
 	if err != nil {
 		return nil, err
@@ -45,14 +36,17 @@ func NewPostgresDB(
 	return pool, nil
 }
 
-// اتصال کلینت ردیس را می‌سازد
+// اتصال کلینت ردیس را می‌سازد.
 func NewRedisClient(
 	ctx context.Context,
 	lc fx.Lifecycle,
 	cfg *config.Config,
-) *redispkg.Client {
+) (
+	*redispkg.Client,
+	error,
+) {
 
-	redisClient, _ := redispkg.NewClient(
+	redisClient, err := redispkg.NewClient(
 		ctx,
 		redispkg.Config{
 			Addr:         cfg.Redis.Addr,
@@ -63,6 +57,9 @@ func NewRedisClient(
 			ConnMaxIdle:  cfg.Redis.ConnMaxIdle,
 		},
 	)
+	if err != nil {
+		return nil, err
+	}
 
 	lc.Append(fx.Hook{
 		OnStop: func(ctx context.Context) error {
@@ -70,5 +67,5 @@ func NewRedisClient(
 		},
 	})
 
-	return redisClient
+	return redisClient, nil
 }
