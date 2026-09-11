@@ -1,0 +1,107 @@
+// pkg/proto/product/product.proto
+
+syntax = "proto3";
+
+package product;
+
+import "google/protobuf/timestamp.proto";
+option go_package = "pkg/proto/product";
+
+// --- Product ---
+message Product {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  string category = 4;
+  int64 price = 5;
+  int32 total_stock = 6;
+  int32 reserved_stock = 7;
+  bool is_active = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+}
+
+// --- Create Product (Admin only) ---
+message CreateProductRequest {
+  string name = 1;
+  string description = 2;
+  string category = 3;
+  int64 price = 4;
+  int32 total_stock = 5;
+}
+
+// --- Update Product (Admin only) ---
+// جایگزینی کامل فیلدهای قابل‌ویرایش؛ موجودی از این مسیر تغییر
+// نمی‌کند
+message UpdateProductRequest {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  string category = 4;
+  int64 price = 5;
+  bool is_active = 6;
+}
+
+// --- Get Product ---
+message GetProductRequest {
+  string id = 1;
+}
+
+// --- Search Products ---
+message SearchProductsRequest {
+  // اگر خالی باشد فقط بر اساس کتگوری جستجو میکند
+  string query = 1;
+  // اگر خالی باشد جستجوی کتگوری انجام
+  // نمی‌شود
+  string category = 2;
+  int32 limit = 3;
+  int32 offset = 4;
+}
+
+message SearchProductsResponse {
+  repeated Product products = 1;
+}
+
+// --- Saga ---
+// این سه متد داخلی هستند و مستقیماً توسط سرویس سفارشات فراخوانی
+// می‌شوند؛ به همین دلیل هیچ پیام آن‌ها
+// حاوی اطلاعات کاربر نهایی نیست
+
+message ReserveStockRequest {
+  string product_id = 1;
+  int32 quantity = 2;
+}
+
+message ReserveStockResponse {}
+
+// Compensation: در صورت شکست پرداخت فراخوانی
+// می‌شود
+message ReleaseStockRequest {
+  string product_id = 1;
+  int32 quantity = 2;
+}
+
+message ReleaseStockResponse {}
+
+// در صورت موفقیت پرداخت فراخوانی می‌شود
+message ConfirmStockRequest {
+  string product_id = 1;
+  int32 quantity = 2;
+}
+
+message ConfirmStockResponse {}
+
+service ProductService {
+  // Admin
+  rpc CreateProduct(CreateProductRequest) returns (Product);
+  rpc UpdateProduct(UpdateProductRequest) returns (Product);
+
+  // User & Admin
+  rpc GetProduct(GetProductRequest) returns (Product);
+  rpc SearchProducts(SearchProductsRequest) returns (SearchProductsResponse);
+
+  // Saga
+  rpc ReserveStock(ReserveStockRequest) returns (ReserveStockResponse);
+  rpc ReleaseStock(ReleaseStockRequest) returns (ReleaseStockResponse);
+  rpc ConfirmStock(ConfirmStockRequest) returns (ConfirmStockResponse);
+}
