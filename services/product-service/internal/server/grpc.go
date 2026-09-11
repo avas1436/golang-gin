@@ -18,6 +18,7 @@ import (
 
 	"go.uber.org/fx"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 )
 
 var Module = fx.Module(
@@ -63,6 +64,9 @@ func NewServer(
 	grpcServer := grpc.NewServer(chain)
 
 	pb.RegisterProductServiceServer(grpcServer, grpcHandler)
+
+	// فعال‌سازی gRPC Reflection
+	reflection.Register(grpcServer)
 
 	return grpcServer
 }
