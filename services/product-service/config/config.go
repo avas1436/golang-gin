@@ -14,13 +14,20 @@ type Config struct {
 	Postgres commonConfig.PostgresConfig
 	Redis    commonConfig.RedisConfig
 
-	JWT JWTConfig
+	JWT   JWTConfig
+	Cache CacheConfig
 }
 
 // برای بررسی نقش کاربر ادمین به این قسمت نیاز داریم
 type JWTConfig struct {
 	Secret         string
 	AccessTokenTTL time.Duration
+}
+
+// این ساختار مدت اعتبار هر کلید کش رو تعیین میکند
+type CacheConfig struct {
+	ProductTTL time.Duration
+	SearchTTL  time.Duration
 }
 
 // Load مقادیر را از متغیرهای محیطی می‌خواند.
@@ -67,6 +74,22 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
+	productCacheTTL, err := env.Duration(
+		"PRODUCT_CACHE_TTL",
+		5*time.Minute,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	searchCacheTTL, err := env.Duration(
+		"SEARCH_CACHE_TTL",
+		1*time.Minute,
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	cfg := &Config{
 		GRPCPort: env.String("GRPC_PORT", "50052"),
 
@@ -91,6 +114,11 @@ func Load() (*Config, error) {
 		JWT: JWTConfig{
 			Secret:         jwtSecret,
 			AccessTokenTTL: accessTTL,
+		},
+
+		Cache: CacheConfig{
+			ProductTTL: productCacheTTL,
+			SearchTTL:  searchCacheTTL,
 		},
 	}
 
