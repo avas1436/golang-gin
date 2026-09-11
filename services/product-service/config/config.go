@@ -34,6 +34,9 @@ type CacheConfig struct {
 // در صورت نبود کانفیگ‌های ضروری، fail-fast برنامه درجا بسته می‌شود
 func Load() (*Config, error) {
 
+	// لود کردن فایل متغیر های محیطی در محیط پردازش برنامه
+	env.Load(".env")
+
 	// fail-fast: بدون پسورد دیتابیس سرویس نباید اصلاً بالا بیاد
 	dbPassword, err := env.Require("DB_PASSWORD")
 	if err != nil {

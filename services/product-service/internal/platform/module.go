@@ -3,6 +3,8 @@
 package platform
 
 import (
+	"context"
+
 	"go.uber.org/fx"
 )
 
@@ -10,6 +12,7 @@ import (
 var Module = fx.Module(
 	"platform",
 	fx.Provide(
+		context.Background,
 		NewPostgresDB,
 		NewRedisClient,
 		NewTokenManager,
