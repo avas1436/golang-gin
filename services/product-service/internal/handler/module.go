@@ -1,46 +1,16 @@
-// services/product-service/internal/handler/handler.go
+// services/product-service/internal/handler/module.go
 
 package handler
 
-import (
-	"context"
-	pb "pkg/proto/product"
-	"product-service/internal/service"
+import "go.uber.org/fx"
 
-	"go.uber.org/fx"
-)
-
+// PublicMethods و RateLimitRules نیازی به Provide شدن ندارند: توابع
+// خالصی هستند که هیچ dependency ندارند و مستقیماً در internal/server
+// صدا زده می‌شوند؛ فقط چیزی که واقعاً یک شیء با dependency است
+// (GRPCServer) اینجا Provide می‌شود
 var Module = fx.Module(
 	"handler",
 	fx.Provide(
-		NewGRPCHandler,
+		NewGRPCServer,
 	),
 )
-
-type GRPCHandler struct {
-	pb.UnimplementedProductServiceServer
-	productService service.ProductService
-}
-
-func NewGRPCHandler(svc service.ProductService) pb.ProductServiceServer {
-
-	return &GRPCHandler{
-		productService: svc,
-	}
-
-}
-
-// در زمان اجرای درخواست، ctx توسط سرور gRPC تولید شده و تا لایه دیتابیس پاس داده می‌شود
-func (
-	h *GRPCHandler,
-) GetProduct(
-	ctx context.Context,
-	req *pb.GetProductRequest,
-) (
-	*pb.ProductResponse,
-	error,
-) {
-
-	return h.productService.GetProduct(ctx, req.GetId())
-
-}
