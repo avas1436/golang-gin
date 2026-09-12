@@ -5,6 +5,7 @@ package config
 import (
 	commonConfig "pkg/config"
 	"pkg/env"
+	"time"
 )
 
 type Config struct {
@@ -12,6 +13,17 @@ type Config struct {
 
 	Postgres commonConfig.PostgresConfig
 	Redis    commonConfig.RedisConfig
+	RabbitMQ commonConfig.RabbitMQConfig
+	JWT      JWTConfig
+
+	// باید به سرویس محصولات متصل شویم
+	ProductServiceAddr string
+}
+
+// برای اعتبار سنجی اتصال به سرویس محصولات
+type JWTConfig struct {
+	Secret         string
+	AccessTokenTTL time.Duration
 }
 
 // Load مقادیر را از متغیرهای محیطی می‌خواند.
@@ -23,6 +35,18 @@ func Load() (*Config, error) {
 
 	// fail-fast: بدون پسورد دیتابیس سرویس نباید اصلاً بالا بیاد
 	dbPassword, err := env.Require("DB_PASSWORD")
+	if err != nil {
+		return nil, err
+	}
+
+	// fail-fast: بدون این مقدار نمی‌توان توکن‌های کاربران را
+	// اعتبارسنجی کرد
+	jwtSecret, err := env.Require("JWT_SECRET")
+	if err != nil {
+		return nil, err
+	}
+
+	accessTTL, err := env.Duration("JWT_ACCESS_TTL", 15*time.Minute)
 	if err != nil {
 		return nil, err
 	}
@@ -50,15 +74,24 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
+	// fail-fast: بدون پسورد RabbitMQ سرویس نباید بالا بیاد؛ چون
+	// کل جریان Saga (order.created و گوش‌دادن به payment.*) به این
+	// اتصال وابسته است
+	rabbitPassword, err := env.Require("RABBITMQ_PASSWORD")
+	if err != nil {
+		return nil, err
+	}
+
 	cfg := &Config{
-		GRPCPort: env.String("GRPC_PORT", "50052"),
+		// پورت این سرویس باید با سرویس های دیگه متفاوت باشه
+		GRPCPort: env.String("GRPC_PORT", "50053"),
 
 		Postgres: commonConfig.PostgresConfig{
 			Host:     env.String("DB_HOST", "localhost"),
 			Port:     env.String("DB_PORT", "5432"),
-			User:     env.String("DB_USER", "product_service"),
+			User:     env.String("DB_USER", "order_service"),
 			Password: dbPassword,
-			DBName:   env.String("DB_NAME", "product_service_db"),
+			DBName:   env.String("DB_NAME", "order_service_db"),
 			SSLMode:  env.String("DB_SSLMODE", "disable"),
 		},
 
@@ -70,6 +103,24 @@ func Load() (*Config, error) {
 			MinIdleConns: redisMinIdleConns,
 			ConnMaxIdle:  redisConnMaxIdle,
 		},
+
+		RabbitMQ: commonConfig.RabbitMQConfig{
+			Host:     env.String("RABBITMQ_HOST", "localhost"),
+			Port:     env.String("RABBITMQ_PORT", "5672"),
+			User:     env.String("RABBITMQ_USER", "guest"),
+			Password: rabbitPassword,
+			VHost:    env.String("RABBITMQ_VHOST", ""),
+		},
+
+		JWT: JWTConfig{
+			Secret:         jwtSecret,
+			AccessTokenTTL: accessTTL,
+		},
+
+		ProductServiceAddr: env.String(
+			"PRODUCT_SERVICE_ADDR",
+			"localhost:50052",
+		),
 	}
 
 	return cfg, nil
