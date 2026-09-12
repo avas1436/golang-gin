@@ -297,7 +297,7 @@ func (r *productRepository) Search(
 		FROM products
 		WHERE is_active
 		  AND ($1 = '' OR category = $1)
-		  AND ($2 = '' OR (name || ' ' || description) % $2)
+		    AND ($2 = '' OR (name || ' ' || description) ILIKE '%' || $2 || '%')
 		ORDER BY
 			CASE WHEN $2 = '' THEN created_at END DESC,
 			CASE WHEN $2 <> '' THEN similarity(name || ' ' || description, $2) END DESC
