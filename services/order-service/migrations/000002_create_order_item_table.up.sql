@@ -23,10 +23,11 @@ CREATE TABLE IF NOT EXISTS order_items (
     -- مجموع ارزش سفارش
     subtotal      BIGINT       GENERATED ALWAYS AS (unit_price * quantity) STORED,
 
+    created_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
+
     -- جلوگیری از آمدن دوباره یک محصول در سفارش
     CONSTRAINT uq_order_product UNIQUE (order_id, product_id)
 
-    created_at    TIMESTAMPTZ  NOT NULL DEFAULT now()
 
     -- عمداً updated_at ندارد: یک آیتم سفارش پس از ثبت هیچ‌وقت
     -- ویرایش نمی‌شود؛ برای تغییر تعداد باید سفارش لغو و سفارش
