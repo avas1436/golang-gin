@@ -14,8 +14,6 @@ import (
 type ProductClient interface {
 	GetProduct(ctx context.Context, productID string) (*pb.Product, error)
 	ReserveStock(ctx context.Context, productID string, quantity int32) error
-	ReleaseStock(ctx context.Context, productID string, quantity int32) error
-	ConfirmStock(ctx context.Context, productID string, quantity int32) error
 }
 
 type productClient struct {
@@ -73,40 +71,6 @@ func (c *productClient) ReserveStock(
 	_, err := c.client.ReserveStock(
 		ctx,
 		&pb.ReserveStockRequest{
-			ProductId: productID,
-			Quantity:  quantity,
-		})
-
-	return grpcerrors.ToAppError(err)
-}
-
-// ارسال درخواست آزاد کردن یک رزروی محصول
-func (c *productClient) ReleaseStock(
-	ctx context.Context,
-	productID string,
-	quantity int32,
-) error {
-
-	_, err := c.client.ReleaseStock(
-		ctx,
-		&pb.ReleaseStockRequest{
-			ProductId: productID,
-			Quantity:  quantity,
-		})
-
-	return grpcerrors.ToAppError(err)
-}
-
-// ارسال درخواست تایید نهایی رزرو و کم کردن از موجودی محصول
-func (c *productClient) ConfirmStock(
-	ctx context.Context,
-	productID string,
-	quantity int32,
-) error {
-
-	_, err := c.client.ConfirmStock(
-		ctx,
-		&pb.ConfirmStockRequest{
 			ProductId: productID,
 			Quantity:  quantity,
 		})
