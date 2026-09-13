@@ -21,6 +21,8 @@ const roleAdmin = "admin"
 
 // یک اینترفیس برای جدا کردن منطق سرویس از RabbitMQ پس اصلا لایه
 // نباید از جزییات این ارتباط مطلع باشد
+// ویژگی این سه عملیات اینه که کسی منتظر جواب لحظه ای این ها نیست
+// و بهتر است غیر همزمان انجام شوند
 type EventPublisher interface {
 	PublishOrderCreated(ctx context.Context, order *model.Order) error
 
@@ -29,6 +31,13 @@ type EventPublisher interface {
 		productID uuid.UUID,
 		quantity int32,
 		reason string,
+	) error
+
+	PublishStockConfirmRequested(
+		ctx context.Context,
+		orderID uuid.UUID,
+		productID uuid.UUID,
+		quantity int32,
 	) error
 }
 
@@ -79,11 +88,11 @@ func parseOrderID(id string) (uuid.UUID, error) {
 
 // CreateOrder هسته‌ی Saga سمت Order Service است. مراحل:
 //
-//  1. برای مشخصات محصول یک درخواست همزمان به سرویس محصولات
-//     و مشخصات محصول را میگیریم
+//  1. اطلاعات تمامی محصولات را از سرویس محصولات دریافت میکنیم
 //  2. اگر رزرو یک آیتم شکست بخورد، تمام آیتم‌های قبلی که تا این
 //     لحظه با موفقیت رزرو شده‌اند آزاد میشود
-//  3. سفارش در یک تراکنش واحد ثبت میشود
+//  3. سفارش ها در تراکنش های متفاوت ثبت میشن ولی در صورت مشکل
+//     عملیات جبرانی compensation اتفاق می افته
 //  4. اگر ثبت در دیتابیس شکست بخورد، تمام رزروها را آزاد میشود
 //  5. رویداد order.created را منتشر می‌کند تا Payment Service
 //     شروع به کار کند
@@ -93,9 +102,11 @@ func (
 	ctx context.Context,
 	req *pb.CreateOrderRequest,
 ) (
-	*pb.Order, error,
+	*pb.Order,
+	error,
 ) {
 
+	// بررسی خالی نبودن درخواست
 	if req == nil || len(req.Items) == 0 {
 		return nil, appErrors.New(
 			appErrors.KindInvalidInput,
@@ -103,11 +114,13 @@ func (
 		)
 	}
 
+	// استخراج دیتای احراز هویت از کانتکست
 	claims, err := requireAuthenticated(ctx)
 	if err != nil {
 		return nil, err
 	}
 
+	// اعتبار سنجی آیدی
 	userID, err := uuid.Parse(claims.UserID)
 	if err != nil {
 		return nil, appErrors.New(
@@ -116,13 +129,21 @@ func (
 		)
 	}
 
+	// ساخت یک آرایه خالی حاوی آیتم های سفارش
 	items := make([]*model.OrderItem, 0, len(req.Items))
 
 	for _, reqItem := range req.Items {
 
-		if reqItem.Quantity <= 0 {
+		// بررسی خالی بودن آیتم سفارش
+		if reqItem == nil {
+			return nil, appErrors.New(
+				appErrors.KindInvalidInput,
+				"order item cannot be nil",
+			)
+		}
 
-			s.compensateReservations(ctx, items, "invalid_quantity")
+		// اگر یکی از آیتم ها تعداد کمتر از 1 داشت ارور میدهد
+		if reqItem.Quantity <= 0 {
 
 			return nil, appErrors.New(
 				appErrors.KindInvalidInput,
@@ -130,53 +151,30 @@ func (
 			)
 		}
 
+		// بررسی اعتبار آیدی محصول
+		productID, err := uuid.Parse(reqItem.ProductId)
+		if err != nil {
+			return nil, appErrors.New(
+				appErrors.KindInvalidInput,
+				"invalid product id: "+reqItem.ProductId,
+			)
+		}
+
+		// بررسی وجودیت محصول
 		product, err := s.productClient.GetProduct(ctx, reqItem.ProductId)
 		if err != nil {
-
-			s.compensateReservations(ctx, items, "product_lookup_failed")
 
 			return nil, err
 		}
 
+		// بررسی فعال بودن محصول
 		if !product.IsActive {
-
-			s.compensateReservations(ctx, items, "product_inactive")
 
 			return nil, appErrors.New(
 				appErrors.KindInvalidInput,
 				"product is not available: "+product.Name,
 			)
-		}
 
-		if err := s.productClient.ReserveStock(
-			ctx,
-			reqItem.ProductId,
-			reqItem.Quantity,
-		); err != nil {
-
-			s.compensateReservations(ctx, items, "reservation_failed")
-
-			return nil, err
-		}
-
-		productID, err := uuid.Parse(reqItem.ProductId)
-		if err != nil {
-			// این حالت عملاً نباید برسد چون GetProduct/ReserveStock
-			// قبلش با همین رشته موفق بودند؛ برای اطمینان کامل همین
-			// آیتمی که تازه رزرو شد را هم جبران می‌کنیم
-			s.publishRelease(
-				ctx,
-				reqItem.ProductId,
-				reqItem.Quantity,
-				"internal_error",
-			)
-
-			s.compensateReservations(ctx, items, "internal_error")
-
-			return nil, appErrors.New(
-				appErrors.KindInternal,
-				"invalid product id returned from reservation",
-			)
 		}
 
 		items = append(
@@ -190,24 +188,55 @@ func (
 		)
 	}
 
+	reservedItems := make([]*model.OrderItem, 0, len(items))
+
+	for _, item := range items {
+
+		err := s.productClient.ReserveStock(
+			ctx,
+			item.ProductID.String(),
+			item.Quantity,
+		)
+
+		if err != nil {
+			// یکی از Reservationها شکست خورده است.
+			// بنابراین تمام Reservationهای موفق قبلی
+			// باید compensate شوند.
+			s.compensateReservations(
+				ctx,
+				reservedItems,
+				"reservation_failed",
+			)
+
+			return nil, err
+		}
+
+		reservedItems = append(
+			reservedItems,
+			&model.OrderItem{
+				ProductID:   item.ProductID,
+				ProductName: item.ProductName,
+				UnitPrice:   item.UnitPrice,
+				Quantity:    item.Quantity,
+			},
+		)
+	}
+
 	order := &model.Order{
 		UserID: userID,
 		Items:  items,
 	}
 	order.TotalAmount = order.CalculateTotal()
 
+	// اگر ذخیره کردن در جدول سفارش انجام نشد باید بقیه تغییرات هم به رول بک بشن
 	if err := s.orderRepo.Create(ctx, order); err != nil {
 
-		s.compensateReservations(ctx, items, "order_persist_failed")
+		s.compensateReservations(ctx, reservedItems, "order_persist_failed")
 
 		return nil, err
 	}
 
-	// Dual-Write Problem: سفارش همین الان commit شده. اگر Publish
-	// زیر شکست بخورد، دیگر نمی‌شود (و نباید) سفارشی را که مشتری
-	// برایش موجودی رزرو کرده rollback کرد؛ برای همین این خطا fatal
-	// نیست، فقط لاگ می‌شود. راه‌حل کامل این مشکل الگوی Transactional
-	// Outbox است که فعلاً خارج از scope همین قدم است
+	// انتشار ثبت سفارش برای استفاده در سرویس پرداخت
 	if err := s.publisher.PublishOrderCreated(ctx, order); err != nil {
 
 		log.Printf(
@@ -235,51 +264,19 @@ func (
 ) {
 
 	for _, item := range items {
+
 		if err := s.publisher.PublishStockReleaseRequested(
-			ctx, item.ProductID, item.Quantity, reason,
+			ctx,
+			item.ProductID,
+			item.Quantity,
+			reason,
 		); err != nil {
 			log.Printf(
 				"order-service: failed to publish stock release for product %s: %v",
-				item.ProductID, err,
+				item.ProductID,
+				err,
 			)
 		}
-	}
-}
-
-// publishRelease یک تک‌آیتم را به‌صورت event آزاد می‌کند. خطای آن
-// فقط لاگ می‌شود: این خودش تابع compensation است، پس اگر دوباره
-// خطا بدهد جایی برای «جبرانِ جبران» وجود ندارد — نهایتاً باید یک
-// dead-letter queue یا alerting روی همین صف تعریف شود (خارج از
-// scope فعلی)
-func (
-	s *OrderService,
-) publishRelease(
-	ctx context.Context,
-	productID string,
-	quantity int32,
-	reason string,
-) {
-
-	id, err := uuid.Parse(productID)
-	if err != nil {
-		log.Printf(
-			"order-service: cannot publish release for invalid product id %q: %v",
-			productID, err,
-		)
-		return
-	}
-
-	if err := s.publisher.PublishStockReleaseRequested(
-		ctx,
-		id,
-		quantity,
-		reason,
-	); err != nil {
-		log.Printf(
-			"order-service: failed to publish stock release for product %s: %v",
-			id,
-			err,
-		)
 	}
 }
 
