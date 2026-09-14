@@ -8,8 +8,12 @@ import (
 	"log"
 
 	"pkg/events"
+	"pkg/postgres"
 
 	"product-service/internal/repository"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 const eventTypeStockConfirm = "stock.confirm.requested"
@@ -18,18 +22,15 @@ const eventTypeStockConfirm = "stock.confirm.requested"
 // می‌کند. ایدمپوتنسی اینجا از Release هم مهم‌تره چون ConfirmStock
 // هم total_stock و هم reserved_stock را واقعاً کم می‌کند
 type StockConfirmConsumer struct {
-	productRepo repository.ProductRepository
-	eventRepo   repository.EventRepository
+	pool *pgxpool.Pool
 }
 
 func NewStockConfirmConsumer(
-	productRepo repository.ProductRepository,
-	eventRepo repository.EventRepository,
+	pool *pgxpool.Pool,
 ) *StockConfirmConsumer {
 
 	return &StockConfirmConsumer{
-		productRepo: productRepo,
-		eventRepo:   eventRepo,
+		pool: pool,
 	}
 }
 
@@ -52,47 +53,60 @@ func (
 		return nil
 	}
 
-	// ذخیره رویداد در جدول دیتابیس
-	alreadyProcessed, err := h.eventRepo.MarkProcessed(
+	return postgres.WithTx(
 		ctx,
-		event.EventID,
-		eventTypeStockConfirm,
-		event.ProductID,
+		h.pool,
+		func(tx pgx.Tx) error {
+
+			eventRepo := repository.NewEventRepository(tx)
+			productRepo := repository.NewProductRepository(tx)
+
+			// ذخیره رویداد در جدول دیتابیس
+			alreadyProcessed, err := eventRepo.MarkProcessed(
+				ctx,
+				event.EventID,
+				eventTypeStockConfirm,
+				event.ProductID,
+			)
+
+			// اگر خطا داد
+			if err != nil {
+				log.Printf(
+					"product-service: failed to check idempotency for event %s: %v",
+					event.EventID,
+					err,
+				)
+				return err
+			}
+
+			// اگر رویداد تکراری بود
+			if alreadyProcessed {
+				log.Printf(
+					"product-service: stock confirm event %s already processed, skipping",
+					event.EventID,
+				)
+
+				return nil
+			}
+
+			// ذخیره در جدول مجصولات
+			if err := productRepo.ConfirmStock(
+				ctx,
+				event.ProductID,
+				event.Quantity,
+			); err != nil {
+
+				log.Printf(
+					"product-service: failed to confirm stock for product %s (order %s): %v",
+					event.ProductID,
+					event.OrderID,
+					err,
+				)
+
+				return err
+			}
+
+			return nil
+		},
 	)
-	if err != nil {
-		log.Printf(
-			"product-service: failed to check idempotency for event %s: %v",
-			event.EventID, err,
-		)
-		return err
-	}
-
-	if alreadyProcessed {
-
-		log.Printf(
-			"product-service: stock confirm event %s already processed, skipping",
-			event.EventID,
-		)
-
-		return nil
-	}
-
-	// ذخیره در جدول محصولات
-	if err := h.productRepo.ConfirmStock(
-		ctx,
-		event.ProductID,
-		event.Quantity,
-	); err != nil {
-
-		log.Printf(
-			"product-service: failed to confirm stock for product %s (order %s): %v",
-			event.ProductID,
-			event.OrderID,
-			err,
-		)
-
-		return err
-	}
-
-	return nil
 }

@@ -6,10 +6,13 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"product-service/internal/repository"
 
 	"pkg/events"
+	"pkg/postgres"
 
-	"product-service/internal/repository"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 const eventTypeStockRelease = "stock.release.requested"
@@ -18,18 +21,15 @@ const eventTypeStockRelease = "stock.release.requested"
 // می‌کند. حالا قبل از هر کاری با EventRepository چک می‌کند که این
 // event قبلاً پردازش نشده باشد
 type StockReleaseConsumer struct {
-	productRepo repository.ProductRepository
-	eventRepo   repository.EventRepository
+	pool *pgxpool.Pool
 }
 
 func NewStockReleaseConsumer(
-	productRepo repository.ProductRepository,
-	eventRepo repository.EventRepository,
+	pool *pgxpool.Pool,
 ) *StockReleaseConsumer {
 
 	return &StockReleaseConsumer{
-		productRepo: productRepo,
-		eventRepo:   eventRepo,
+		pool: pool,
 	}
 }
 
@@ -57,45 +57,71 @@ func (
 		return nil
 	}
 
-	// تلاش میکند تا رویداد را در دیتابیس ذخیره کند
-	alreadyProcessed, err := h.eventRepo.MarkProcessed(
+	return postgres.WithTx(
 		ctx,
-		event.EventID,
-		eventTypeStockRelease,
-		event.ProductID,
+		h.pool,
+		func(tx pgx.Tx) error {
+
+			// هر دو Repository با همان Transaction ساخته می‌شوند.
+			eventRepo := repository.NewEventRepository(tx)
+			productRepo := repository.NewProductRepository(tx)
+
+			// -----------------------------
+			// 1. Idempotency
+			// -----------------------------
+			alreadyProcessed, err := eventRepo.MarkProcessed(
+				ctx,
+				event.EventID,
+				eventTypeStockRelease,
+				event.ProductID,
+			)
+
+			if err != nil {
+				log.Printf(
+					"product-service: failed to check idempotency for event %s: %v",
+					event.EventID,
+					err,
+				)
+
+				return err
+			}
+
+			if alreadyProcessed {
+				log.Printf(
+					"product-service: stock release event %s already processed, skipping",
+					event.EventID,
+				)
+
+				return nil
+			}
+
+			// -----------------------------
+			// 2. Release Stock
+			// -----------------------------
+			if err := productRepo.ReleaseStock(
+				ctx,
+				event.ProductID,
+				event.Quantity,
+			); err != nil {
+
+				log.Printf(
+					"product-service: failed to release stock for product %s: %v",
+					event.ProductID,
+					err,
+				)
+
+				return err
+			}
+
+			// اگر اینجا nil برگردد:
+			//
+			// COMMIT
+			//
+			// اگر هر چیزی قبلش error بدهد:
+			//
+			// ROLLBACK
+
+			return nil
+		},
 	)
-	if err != nil {
-		// اینجا نمی‌دانیم event قبلاً پردازش شده یا نه؛ امن‌ترین
-		// کار برگرداندن خطاست تا با Nack دوباره تلاش شود
-		log.Printf(
-			"product-service: failed to check idempotency for event %s: %v",
-			event.EventID, err,
-		)
-		return err
-	}
-
-	if alreadyProcessed {
-		log.Printf(
-			"product-service: stock release event %s already processed, skipping",
-			event.EventID,
-		)
-		return nil
-	}
-
-	// در اینجا تلاش میکند تا در جدول محصول تغییر را ذخیره کند
-	if err := h.productRepo.ReleaseStock(
-		ctx,
-		event.ProductID,
-		event.Quantity,
-	); err != nil {
-
-		log.Printf(
-			"product-service: failed to release stock for product %s (reason: %s): %v",
-			event.ProductID, event.Reason, err,
-		)
-
-		return err
-	}
-
-	return nil
 }
