@@ -34,6 +34,35 @@ func GenerateAccessToken(
 	ttl time.Duration,
 ) (string, error) {
 
+	// اعتبار سنجی مقادیر ورودی
+	if secret == "" {
+		return "", appErrors.New(
+			appErrors.KindInvalidInput,
+			"jwt secret is empty",
+		)
+	}
+
+	if userID == "" {
+		return "", appErrors.New(
+			appErrors.KindInvalidInput,
+			"user id is empty",
+		)
+	}
+
+	if role == "" {
+		return "", appErrors.New(
+			appErrors.KindInvalidInput,
+			"user role is empty",
+		)
+	}
+
+	if ttl <= 0 {
+		return "", appErrors.New(
+			appErrors.KindInvalidInput,
+			"access token ttl must be greater than zero",
+		)
+	}
+
 	now := time.Now()
 
 	claims := AccessClaims{
@@ -65,6 +94,21 @@ func ParseAccessToken(
 	secret string,
 	tokenString string,
 ) (*AccessClaims, error) {
+
+	// اعتبار سنجی مقادیر ورودی
+	if secret == "" {
+		return nil, appErrors.New(
+			appErrors.KindInvalidInput,
+			"jwt secret is empty",
+		)
+	}
+
+	if tokenString == "" {
+		return nil, appErrors.New(
+			appErrors.KindUnauthenticated,
+			"access token is empty",
+		)
+	}
 
 	claims := &AccessClaims{}
 
