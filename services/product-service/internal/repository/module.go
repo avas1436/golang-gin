@@ -25,5 +25,7 @@ var Module = fx.Module(
 			NewProductRepository,
 			fx.ResultTags(`name:"rawProductRepository"`),
 		),
+
+		NewEventRepository,
 	),
 )
