@@ -239,10 +239,22 @@ func (
 	// انتشار ثبت سفارش برای استفاده در سرویس پرداخت
 	if err := s.publisher.PublishOrderCreated(ctx, order); err != nil {
 
+		// 1. لاگ کردن خطا
 		log.Printf(
 			"order-service: failed to publish order.created for order %s: %v",
 			order.ID,
 			err,
+		)
+
+		// 2. آزاد کردن رزروها در سرویس محصول
+		s.compensateReservations(ctx, reservedItems, "publish_failed")
+
+		// 3. در دیتابیس هم سفارش کنسل میشود
+		err = s.orderRepo.UpdateStatus(ctx, order.ID, "failed")
+
+		return nil, appErrors.New(
+			appErrors.KindInternal,
+			"failed to start order processing",
 		)
 
 	}

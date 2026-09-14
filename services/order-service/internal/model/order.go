@@ -15,6 +15,7 @@ const (
 	OrderStatusPending   OrderStatus = "pending"
 	OrderStatusConfirmed OrderStatus = "confirmed"
 	OrderStatusCancelled OrderStatus = "cancelled"
+	OrderStatusFailed    OrderStatus = "failed"
 )
 
 // محتویات یک سفارش

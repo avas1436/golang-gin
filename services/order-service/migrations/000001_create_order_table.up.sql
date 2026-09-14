@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS orders (
     user_id       UUID         NOT NULL,
 
     status        VARCHAR(20)  NOT NULL DEFAULT 'pending'
-                  CHECK (status IN ('pending', 'confirmed', 'cancelled')),
+                  CHECK (status IN ('pending', 'confirmed', 'cancelled', 'failed')),
 
     -- مجموع (unit_price * quantity) تمام آیتم‌ها، در لحظه‌ی ثبت
     -- سفارش محاسبه و اینجا snapshot می‌شود

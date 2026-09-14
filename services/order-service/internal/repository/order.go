@@ -370,7 +370,11 @@ func (
 	`
 
 	result, err := r.pool.Exec(
-		ctx, query, next, id, model.OrderStatusPending,
+		ctx,
+		query,
+		next,
+		id,
+		model.OrderStatusPending,
 	)
 	if err != nil {
 		return appErrors.Wrap(
