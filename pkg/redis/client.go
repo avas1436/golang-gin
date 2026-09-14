@@ -31,6 +31,11 @@ func NewClient(
 	error,
 ) {
 
+	// اعتبار سنجی آدرس
+	if cfg.Addr == "" {
+		return nil, fmt.Errorf("redis address is empty")
+	}
+
 	// تنظیم مقادیر پیش‌فرض منطقی در صورتی که در کانفیگ مقداردهی نشده باشند
 	if cfg.PoolSize == 0 {
 		cfg.PoolSize = 10
@@ -54,7 +59,12 @@ func NewClient(
 
 	// الگوی Fail-Fast: بررسی می‌کنیم که ردیس واقعاً در دسترس باشد
 	if err := client.Ping(ctx).Err(); err != nil {
-		return nil, fmt.Errorf("failed to connect to redis: %w", err)
+		_ = client.Close()
+
+		return nil, fmt.Errorf(
+			"failed to connect to redis: %w",
+			err,
+		)
 	}
 
 	return client, nil
