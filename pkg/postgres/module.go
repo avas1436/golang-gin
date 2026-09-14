@@ -32,20 +32,45 @@ func NewPoolProvider(
 		return nil, err
 	}
 
-	lc.Append(fx.Hook{
-		OnStop: func(ctx context.Context) error {
-			pool.Close()
-			return nil
+	lc.Append(
+		fx.Hook{
+			OnStop: func(ctx context.Context) error {
+				pool.Close()
+				return nil
+			},
 		},
-	})
+	)
 
 	return pool, nil
 }
 
+// AsDBTX همان Pool را به صورت DBTX در اختیار Fx قرار می‌دهد.
+//
+// این کار باعث می‌شود:
+//
+//	*pgxpool.Pool
+//
+// و:
+//
+//	postgres.DBTX
+//
+// هر دو به همان connection pool اشاره کنند.
+func AsDBTX(
+	pool *pgxpool.Pool,
+) DBTX {
+	return pool
+}
+
+// ماژور خروجی دیتابیس
 var Module = fx.Module(
 	"postgres",
 
 	fx.Provide(
 		NewPoolProvider,
+
+		fx.Annotate(
+			AsDBTX,
+			fx.As(new(DBTX)),
+		),
 	),
 )
