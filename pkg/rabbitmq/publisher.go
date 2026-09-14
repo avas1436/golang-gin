@@ -102,6 +102,15 @@ func (
 	payload any,
 ) error {
 
+	// بررسی این چنلی که بهش وصلیم کار میکنه
+	if p == nil || p.channel == nil {
+		return appErrors.New(
+			appErrors.KindInternal,
+			"rabbitmq publisher is not initialized",
+		)
+	}
+
+	// اعتبار سنجی آدرس روتینگ
 	if routingKey == "" {
 		return appErrors.New(
 			appErrors.KindInvalidInput,
@@ -162,4 +171,16 @@ func (
 	}
 
 	return nil
+}
+
+// Close فقط Channel مربوط به Publisher را می‌بندد.
+//
+// Connection اصلی توسط rabbitmq.Module مدیریت می‌شود.
+func (p *Publisher) Close() error {
+
+	if p == nil || p.channel == nil {
+		return nil
+	}
+
+	return p.channel.Close()
 }

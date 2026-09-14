@@ -70,6 +70,7 @@ func (c *Consumer) BindQueue(
 	routingKey string,
 ) error {
 
+	// اعتبار سنجی نام صف
 	if queueName == "" {
 		return appErrors.New(
 			appErrors.KindInvalidInput,
@@ -77,6 +78,7 @@ func (c *Consumer) BindQueue(
 		)
 	}
 
+	// اعتبار سنجی exchange
 	if exchange == "" {
 		return appErrors.New(
 			appErrors.KindInvalidInput,
@@ -84,6 +86,7 @@ func (c *Consumer) BindQueue(
 		)
 	}
 
+	// اعتبار سنجی آدرس روتینگ
 	if routingKey == "" {
 		return appErrors.New(
 			appErrors.KindInvalidInput,
@@ -134,6 +137,15 @@ func (c *Consumer) Consume(
 	handler HandlerFunc,
 ) error {
 
+	// بررسی اتصال چنل مصرف کننده
+	if c == nil || c.channel == nil {
+		return appErrors.New(
+			appErrors.KindInternal,
+			"rabbitmq consumer is not initialized",
+		)
+	}
+
+	// اعتبار سنجی هندلر
 	if handler == nil {
 		return appErrors.New(
 			appErrors.KindInvalidInput,
@@ -141,6 +153,7 @@ func (c *Consumer) Consume(
 		)
 	}
 
+	// اعتبار سنجی نام صف
 	if queueName == "" {
 		return appErrors.New(
 			appErrors.KindInvalidInput,
@@ -224,4 +237,14 @@ func (c *Consumer) Consume(
 			}
 		}
 	}
+}
+
+// قطع کننده اتصال مصرف کننده
+func (c *Consumer) Close() error {
+
+	if c == nil || c.channel == nil {
+		return nil
+	}
+
+	return c.channel.Close()
 }

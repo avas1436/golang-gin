@@ -23,18 +23,42 @@ package rabbitmq
 
 import (
 	appErrors "pkg/errors"
+	"sync"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-// Connection یک wrapper نازک روی اتصال AMQP است.
+// Connection یک wrapper نازک روی اتصال RabbitMQ است.
+//
+// Connection مربوط به کل ارتباط TCP با RabbitMQ است.
+//
+// Channel یک کانال AMQP جدید از روی Connection می‌سازد.
+//
+// چند Publisher و Consumer می‌توانند یک Connection را
+// به صورت مشترک استفاده کنند.
+//
+// اما هر Publisher / Consumer بهتر است Channel اختصاصی
+// خودش را داشته باشد.
+//
+// TODO: فعلا این نظم در سرویس ها نیست
 type Connection struct {
 	conn *amqp.Connection
+
+	// این پارامتر برای این است که تنها یکبار قابلیت اجرا به یک تابع بدهیم
+	closeOnce sync.Once
 }
 
-// Connect یک اتصال جدید به RabbitMQ باز می‌کند. url معمولاً از
-// commonConfig.RabbitMQConfig.URL() ساخته می‌شود
+// Connect یک اتصال جدید به RabbitMQ باز می‌کند.
+// url = commonConfig.RabbitMQConfig.URL()
 func Connect(url string) (*Connection, error) {
+
+	// اعتبار سنجی آدرس اتصال
+	if url == "" {
+		return nil, appErrors.New(
+			appErrors.KindInvalidInput,
+			"rabbitmq url is empty",
+		)
+	}
 
 	conn, err := amqp.Dial(url)
 
@@ -51,13 +75,29 @@ func Connect(url string) (*Connection, error) {
 	return &Connection{conn: conn}, nil
 }
 
-// Channel یک کانال AMQP جدید از روی Connection می‌سازد.
+// Channel یک Channel جدید روی Connection ایجاد می‌کند.
 //
-// Publisherها و Consumerها بهتر است Channel اختصاصی خودشان را داشته باشند
-// تا lifecycle و خطاهای هر بخش از یکدیگر مستقل باشند.
+// هر Publisher یا Consumer بهتر است Channel مخصوص خودش
+// را داشته باشد.
 //
-// خود Connection می‌تواند بین چند Publisher و Consumer به اشتراک گذاشته شود.
+// Connection مشترک است، Channelها مستقل هستند.
 func (c *Connection) Channel() (*amqp.Channel, error) {
+
+	// تست اینکه کانکشن خالی نباشد
+	if c == nil || c.conn == nil {
+		return nil, appErrors.New(
+			appErrors.KindInternal,
+			"rabbitmq connection is nil",
+		)
+	}
+
+	// تست اینکه اتصال برقرار است
+	if c.conn.IsClosed() {
+		return nil, appErrors.New(
+			appErrors.KindInternal,
+			"rabbitmq connection is closed",
+		)
+	}
 
 	ch, err := c.conn.Channel()
 
@@ -72,7 +112,22 @@ func (c *Connection) Channel() (*amqp.Channel, error) {
 	return ch, nil
 }
 
-// قطع اتصال کانال
+// Close اتصال RabbitMQ را می‌بندد.
+//
+// closeOnce باعث می‌شود اگر به هر دلیلی Close چند بار
+// فراخوانی شد، فقط یک بار عملیات واقعی انجام شود.
 func (c *Connection) Close() error {
-	return c.conn.Close()
+
+	// تست اینکه کانکشن خالی نباشد
+	if c == nil || c.conn == nil {
+		return nil
+	}
+
+	var err error
+
+	c.closeOnce.Do(func() {
+		err = c.conn.Close()
+	})
+
+	return err
 }
