@@ -6,7 +6,6 @@ import (
 	"context"
 	"log"
 
-	"pkg/auth"
 	appErrors "pkg/errors"
 	pb "pkg/proto/order"
 
@@ -18,28 +17,6 @@ import (
 )
 
 const roleAdmin = "admin"
-
-// یک اینترفیس برای جدا کردن منطق سرویس از RabbitMQ پس اصلا لایه
-// نباید از جزییات این ارتباط مطلع باشد
-// ویژگی این سه عملیات اینه که کسی منتظر جواب لحظه ای این ها نیست
-// و بهتر است غیر همزمان انجام شوند
-type EventPublisher interface {
-	PublishOrderCreated(ctx context.Context, order *model.Order) error
-
-	PublishStockReleaseRequested(
-		ctx context.Context,
-		productID uuid.UUID,
-		quantity int32,
-		reason string,
-	) error
-
-	PublishStockConfirmRequested(
-		ctx context.Context,
-		orderID uuid.UUID,
-		productID uuid.UUID,
-		quantity int32,
-	) error
-}
 
 type OrderService struct {
 	orderRepo     repository.OrderRepository
@@ -60,34 +37,9 @@ func NewOrderService(
 	}
 }
 
-func requireAuthenticated(ctx context.Context) (*auth.AccessClaims, error) {
-
-	claims, ok := auth.ClaimsFromContext(ctx)
-	if !ok {
-		return nil, appErrors.New(
-			appErrors.KindUnauthenticated,
-			"authentication required",
-		)
-	}
-
-	return claims, nil
-}
-
-func parseOrderID(id string) (uuid.UUID, error) {
-
-	parsed, err := uuid.Parse(id)
-	if err != nil {
-		return uuid.Nil, appErrors.New(
-			appErrors.KindInvalidInput,
-			"invalid order id",
-		)
-	}
-
-	return parsed, nil
-}
-
-// CreateOrder هسته‌ی Saga سمت Order Service است. مراحل:
+// CreateOrder هسته‌ی Saga سمت Order Service است.
 //
+// مراحل:
 //  1. اطلاعات تمامی محصولات را از سرویس محصولات دریافت میکنیم
 //  2. اگر رزرو یک آیتم شکست بخورد، تمام آیتم‌های قبلی که تا این
 //     لحظه با موفقیت رزرو شده‌اند آزاد میشود
@@ -129,97 +81,17 @@ func (
 		)
 	}
 
-	// ساخت یک آرایه خالی حاوی آیتم های سفارش
-	items := make([]*model.OrderItem, 0, len(req.Items))
-
-	for _, reqItem := range req.Items {
-
-		// بررسی خالی بودن آیتم سفارش
-		if reqItem == nil {
-			return nil, appErrors.New(
-				appErrors.KindInvalidInput,
-				"order item cannot be nil",
-			)
-		}
-
-		// اگر یکی از آیتم ها تعداد کمتر از 1 داشت ارور میدهد
-		if reqItem.Quantity <= 0 {
-
-			return nil, appErrors.New(
-				appErrors.KindInvalidInput,
-				"item quantity must be positive",
-			)
-		}
-
-		// بررسی اعتبار آیدی محصول
-		productID, err := uuid.Parse(reqItem.ProductId)
-		if err != nil {
-			return nil, appErrors.New(
-				appErrors.KindInvalidInput,
-				"invalid product id: "+reqItem.ProductId,
-			)
-		}
-
-		// بررسی وجودیت محصول
-		product, err := s.productClient.GetProduct(ctx, reqItem.ProductId)
-		if err != nil {
-
-			return nil, err
-		}
-
-		// بررسی فعال بودن محصول
-		if !product.IsActive {
-
-			return nil, appErrors.New(
-				appErrors.KindInvalidInput,
-				"product is not available: "+product.Name,
-			)
-
-		}
-
-		items = append(
-			items,
-			&model.OrderItem{
-				ProductID:   productID,
-				ProductName: product.Name,
-				UnitPrice:   product.Price,
-				Quantity:    reqItem.Quantity,
-			},
-		)
+	// مشخصات محصولات رو در یک حلقه به صورت همزمان یکی یکی میگیره
+	// و بعد و در لیست items برامون قرار میده
+	items, err := s.buildOrderItems(ctx, req.Items)
+	if err != nil {
+		return nil, err
 	}
 
-	reservedItems := make([]*model.OrderItem, 0, len(items))
-
-	for _, item := range items {
-
-		err := s.productClient.ReserveStock(
-			ctx,
-			item.ProductID.String(),
-			item.Quantity,
-		)
-
-		if err != nil {
-			// یکی از Reservationها شکست خورده است.
-			// بنابراین تمام Reservationهای موفق قبلی
-			// باید compensate شوند.
-			s.compensateReservations(
-				ctx,
-				reservedItems,
-				"reservation_failed",
-			)
-
-			return nil, err
-		}
-
-		reservedItems = append(
-			reservedItems,
-			&model.OrderItem{
-				ProductID:   item.ProductID,
-				ProductName: item.ProductName,
-				UnitPrice:   item.UnitPrice,
-				Quantity:    item.Quantity,
-			},
-		)
+	// به صورت همزمان یکی یکی محصولات رو رزرو میکنه
+	reservedItems, err := s.reserveItems(ctx, items)
+	if err != nil {
+		return nil, err
 	}
 
 	order := &model.Order{
@@ -250,7 +122,19 @@ func (
 		s.compensateReservations(ctx, reservedItems, "publish_failed")
 
 		// 3. در دیتابیس هم سفارش کنسل میشود
-		err = s.orderRepo.UpdateStatus(ctx, order.ID, "failed")
+		if updateErr := s.orderRepo.UpdateStatus(
+			ctx,
+			order.ID,
+			"failed",
+		); updateErr != nil {
+
+			log.Printf(
+				"order-service: failed to mark order %s as failed: %v",
+				order.ID,
+				updateErr,
+			)
+
+		}
 
 		return nil, appErrors.New(
 			appErrors.KindInternal,
@@ -260,36 +144,6 @@ func (
 	}
 
 	return toProtoOrder(order), nil
-}
-
-// compensateReservations رزرو تمام آیتم‌هایی که تا این لحظه موفق
-// شده بودند را آزاد می‌کند. خطای هر ReleaseStock را فقط لاگ می‌کند
-// و ادامه می‌دهد؛ اگر همین‌جا هم return early می‌کردیم، ممکن بود
-// آیتم‌های بعدی هیچ‌وقت آزاد نشوند و موجودی برای همیشه قفل بماند —
-// که دقیقاً همان چیزی است که Compensation باید جلویش را بگیرد
-func (
-	s *OrderService,
-) compensateReservations(
-	ctx context.Context,
-	items []*model.OrderItem,
-	reason string,
-) {
-
-	for _, item := range items {
-
-		if err := s.publisher.PublishStockReleaseRequested(
-			ctx,
-			item.ProductID,
-			item.Quantity,
-			reason,
-		); err != nil {
-			log.Printf(
-				"order-service: failed to publish stock release for product %s: %v",
-				item.ProductID,
-				err,
-			)
-		}
-	}
 }
 
 // GetOrder فقط برای صاحب سفارش یا ادمین قابل مشاهده است

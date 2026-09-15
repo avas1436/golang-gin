@@ -4,6 +4,7 @@ package messaging
 
 import (
 	"context"
+	appErrors "pkg/errors"
 	"time"
 
 	"pkg/events"
@@ -14,25 +15,43 @@ import (
 	"github.com/google/uuid"
 )
 
-// EventPublisher پیاده‌سازی واقعی service.EventPublisher است. جایی
-// که تعریف اینترفیس هست (internal/service) این پیاده‌سازی را
-// نمی‌شناسد؛ فقط main.go/fx این دو را به هم وصل می‌کند
-type EventPublisher struct {
+// RabbitMQEventPublisher پیاده‌سازی interface مربوط به
+// انتشار Eventهای Order Service با استفاده از RabbitMQ است.
+//
+// این struct فقط مسئول تبدیل مدل‌های داخلی Order Service
+// به Eventهای قابل انتشار و ارسال آنها به RabbitMQ است.
+//
+// منطق Business و Saga داخل این struct قرار نمی‌گیرد.
+type RabbitMQEventPublisher struct {
 	publisher *rabbitmq.Publisher
 }
 
-func NewEventPublisher(publisher *rabbitmq.Publisher) *EventPublisher {
-	return &EventPublisher{publisher: publisher}
+// NewRabbitMQEventPublisher یک Event Publisher می‌سازد.
+func NewRabbitMQEventPublisher(
+	publisher *rabbitmq.Publisher,
+) *RabbitMQEventPublisher {
+
+	return &RabbitMQEventPublisher{
+		publisher: publisher,
+	}
 }
 
 // بعد از کامیت شدن موفق سفارش در سرویس سفارشات این رویداد منتشر میشود
 // تا سرویس های محصول و نوتیف و انبار داری و ... از آن استفاده کنند
 func (
-	p *EventPublisher,
+	p *RabbitMQEventPublisher,
 ) PublishOrderCreated(
 	ctx context.Context,
 	order *model.Order,
 ) error {
+
+	// بررسی خالی نبودن سفارش
+	if order == nil {
+		return appErrors.New(
+			appErrors.KindInvalidInput,
+			"order cannot be nil",
+		)
+	}
 
 	items := make([]events.OrderCreatedItem, 0, len(order.Items))
 
@@ -58,7 +77,7 @@ func (
 
 // این تابع برای تک تک آیتم های یک سفارش به صورت جداگانه یک رویداد
 // منتشر میکند و رزرو آن محصول در سرویس محصولات کسر خواهد شد
-func (p *EventPublisher) PublishStockReleaseRequested(
+func (p *RabbitMQEventPublisher) PublishStockReleaseRequested(
 	ctx context.Context,
 	productID uuid.UUID,
 	quantity int32,
@@ -83,7 +102,7 @@ func (p *EventPublisher) PublishStockReleaseRequested(
 // بعد از تایید پرداخت از سمت سرویس پرداخت ابتدا در سرویس سفارشات
 // سفارش مورد نظر تایید شده و بعد این تابع یک رویداد تایید نهای برای سرویس
 // های دیگر منتشر خواهد کرد
-func (p *EventPublisher) PublishStockConfirmRequested(
+func (p *RabbitMQEventPublisher) PublishStockConfirmRequested(
 	ctx context.Context,
 	orderID uuid.UUID,
 	productID uuid.UUID,
