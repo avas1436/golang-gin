@@ -16,10 +16,9 @@ func ProvideRedisConfig(cfg *Config) *commonConfig.RedisConfig {
 	return &cfg.Redis
 }
 
-func ProvideJWTConfig(cfg *Config) *JWTConfig {
+func ProvideJWTConfig(cfg *Config) *commonConfig.JWTConfig {
 	return &cfg.JWT
 }
-
 func ProvideRabbitMQConfig(cfg *Config) *commonConfig.RabbitMQConfig {
 	return &cfg.RabbitMQ
 }

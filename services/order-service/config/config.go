@@ -14,16 +14,10 @@ type Config struct {
 	Postgres commonConfig.PostgresConfig
 	Redis    commonConfig.RedisConfig
 	RabbitMQ commonConfig.RabbitMQConfig
-	JWT      JWTConfig
+	JWT      commonConfig.JWTConfig
 
 	// باید به سرویس محصولات متصل شویم
 	ProductServiceAddr string
-}
-
-// برای اعتبار سنجی اتصال به سرویس محصولات
-type JWTConfig struct {
-	Secret         string
-	AccessTokenTTL time.Duration
 }
 
 // Load مقادیر را از متغیرهای محیطی می‌خواند.
@@ -112,7 +106,7 @@ func Load() (*Config, error) {
 			VHost:    env.String("RABBITMQ_VHOST", ""),
 		},
 
-		JWT: JWTConfig{
+		JWT: commonConfig.JWTConfig{
 			Secret:         jwtSecret,
 			AccessTokenTTL: accessTTL,
 		},

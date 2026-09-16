@@ -9,7 +9,7 @@ import (
 )
 
 func NewTokenManagerProvider(
-	cfg commonConfig.JWTConfig,
+	cfg *commonConfig.JWTConfig,
 ) TokenManager {
 	return NewTokenManager(
 		cfg.Secret,
