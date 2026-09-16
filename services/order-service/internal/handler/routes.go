@@ -20,17 +20,18 @@ func PublicMethods() map[string]bool {
 func RateLimitRules() map[string]grpcmiddleware.RateLimitRule {
 
 	return map[string]grpcmiddleware.RateLimitRule{
-		// نوشتن محدود به ادمین است، پس محدودیت سخت‌گیرانه لازم نیست
-		// ولی همچنان به‌عنوان یک لایه‌ی محافظتی خوبه
+		// ایجاد سفارش یک عملیات write است و برای جلوگیری از
+		// سوءاستفاده، rate limit نسبتاً سختی دارد.
 		pb.OrderService_CreateOrder_FullMethodName: {
 			Limit: ratelimit.PerMinute(5),
 		},
 
+		// دریافت لیست سفارش‌های کاربر احراز هویت‌شده
+		// با rate limit مناسب برای جلوگیری از abuse.
 		pb.OrderService_GetOrder_FullMethodName: {
 			Limit: ratelimit.PerMinute(30),
 		},
 
-		// ترافیک عمومی مرور فروشگاه؛ محدودیت بازتر
 		pb.OrderService_ListMyOrders_FullMethodName: {
 			Limit: ratelimit.PerMinute(30),
 		},

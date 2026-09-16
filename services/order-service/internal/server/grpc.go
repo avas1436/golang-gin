@@ -13,48 +13,60 @@ import (
 	pb "pkg/proto/order"
 	"pkg/ratelimit"
 
-	"order-service/config"
 	"order-service/internal/handler"
 
-	"go.uber.org/fx"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 )
 
-var Module = fx.Module(
-	"server",
-	fx.Provide(
-		NewServer,
-	),
-	fx.Invoke(RegisterHooks),
-)
-
-// NewServer یک *grpc.Server کامل با زنجیره‌ی Interceptor می‌سازد و
-// OrderService را رویش رجیستر می‌کند.
+// GRPCServer مسئول مدیریت gRPC Server مربوط به Order Service است.
 //
-// ترتیب زنجیره عمداً این‌طور است:
-//  1. Recovery — باید بیرونی‌ترین لایه باشد تا پنیک هرکدام از
-//     لایه‌های داخلی‌تر (حتی خودِ Logging) را هم بگیرد
-//  2. Logging — نتیجه‌ی نهایی درخواست (شامل رد شدن توسط Auth یا
-//     RateLimit) را ثبت می‌کند
-//  3. RateLimit — قبل از Auth اجرا می‌شود چون بر اساس IP است و
-//     نیازی به parse کردن JWT ندارد؛ ترافیک مخرب/سیل‌آسا را قبل از
-//     صرف هزینه‌ی اعتبارسنجی توکن متوقف می‌کند
-//  4. Auth — آخرین لایه، دقیقاً قبل از رسیدن به منطق واقعی handler
+// این struct علاوه بر خود grpc.Server، listener را نیز نگه می‌دارد
+// تا lifecycle هر دو resource به‌صورت مشخص مدیریت شود.
+type GRPCServer struct {
+	server   *grpc.Server
+	listener net.Listener
+}
+
+// NewServer یک gRPC Server کامل برای Order Service می‌سازد.
+//
+// مسئولیت‌های این تابع:
+//
+//   - ساخت interceptor chain
+//   - ساخت grpc.Server
+//   - ثبت OrderService
+//   - فعال کردن gRPC Reflection
+//
+// شروع و متوقف کردن Server در RegisterHooks انجام می‌شود.
 func NewServer(
 	grpcHandler *handler.GRPCServer,
 	tokens auth.TokenManager,
 	limiter ratelimit.Limiter,
-) *grpc.Server {
+) *GRPCServer {
 
 	chain := grpc.ChainUnaryInterceptor(
+
+		// Recovery باید بیرونی‌ترین interceptor باشد
+		// تا panicهای لایه‌های داخلی را نیز دریافت کند.
 		grpcmiddleware.RecoveryInterceptor(),
+
+		// نتیجه نهایی درخواست را log می‌کند؛
+		// بنابراین درخواست‌هایی که توسط RateLimit یا Auth
+		// رد شده‌اند نیز log خواهند شد.
 		grpcmiddleware.LoggingInterceptor(),
+
+		// Rate Limit قبل از Auth اجرا می‌شود.
+		//
+		// در وضعیت فعلی پروژه، nil یعنی استفاده از
+		// DefaultKeyFunc که بر اساس IP کار می‌کند.
 		grpcmiddleware.RateLimitInterceptor(
 			limiter,
 			handler.RateLimitRules(),
 			nil, // nil یعنی از DefaultKeyFunc (بر اساس IP) استفاده شود
 		),
+
+		// Authentication آخرین interceptor قبل از رسیدن
+		// درخواست به Handler است.
 		grpcmiddleware.AuthInterceptor(
 			tokens,
 			handler.PublicMethods(),
@@ -63,56 +75,92 @@ func NewServer(
 
 	grpcServer := grpc.NewServer(chain)
 
-	pb.RegisterOrderServiceServer(grpcServer, grpcHandler)
+	// ثبت RPCهای مربوط به Order Service.
+	pb.RegisterOrderServiceServer(
+		grpcServer,
+		grpcHandler,
+	)
 
 	// فعال‌سازی gRPC Reflection
 	reflection.Register(grpcServer)
 
-	return grpcServer
+	// فعال کردن gRPC Reflection.
+	reflection.Register(grpcServer)
+
+	return &GRPCServer{
+		server: grpcServer,
+	}
 }
 
-// RegisterHooks سرور را به چرخه‌ی حیات Fx متصل می‌کند.
+// Start سرور gRPC را روی پورت مشخص‌شده اجرا می‌کند.
 //
-// OnStart باید سریع برگردد (Fx منتظرش می‌ماند)، در حالی که
-// grpcServer.Serve بلاک‌کننده است؛ به همین دلیل داخل یک goroutine
-// اجرا می‌شود. OnStop با GracefulStop به درخواست‌های در حال پردازش
-// فرصت می‌دهد قبل از بسته‌شدن واقعی کانکشن‌ها تمام شوند (برخلاف
-// Stop که بی‌رحمانه قطع می‌کند)
-func RegisterHooks(
-	lc fx.Lifecycle,
-	grpcServer *grpc.Server,
-	cfg *config.Config,
-) {
+// net.Listen قبل از اجرای goroutine انجام می‌شود تا اگر پورت
+// قابل استفاده نبود، خطا مستقیماً به Fx برگردد.
+//
+// Serve بلاک‌کننده است؛ بنابراین داخل goroutine اجرا می‌شود.
+func (s *GRPCServer) Start(
+	port string,
+) error {
 
-	lc.Append(fx.Hook{
-		OnStart: func(ctx context.Context) error {
+	listener, err := net.Listen(
+		"tcp",
+		fmt.Sprintf(":%s", port),
+	)
+	if err != nil {
+		return fmt.Errorf(
+			"failed to listen on port %s: %w",
+			port,
+			err,
+		)
+	}
 
-			lis, err := net.Listen("tcp", fmt.Sprintf(":%s", cfg.GRPCPort))
-			if err != nil {
-				return fmt.Errorf(
-					"failed to listen on port %s: %w",
-					cfg.GRPCPort,
-					err,
-				)
-			}
+	s.listener = listener
 
-			go func() {
-				log.Printf(
-					"product-service: gRPC server listening on :%s",
-					cfg.GRPCPort,
-				)
+	go func() {
 
-				if err := grpcServer.Serve(lis); err != nil {
-					log.Printf("product-service: grpc server stopped: %v", err)
-				}
-			}()
+		log.Printf(
+			"order-service: gRPC server listening on :%s",
+			port,
+		)
 
-			return nil
-		},
+		if err := s.server.Serve(listener); err != nil {
 
-		OnStop: func(ctx context.Context) error {
-			grpcServer.GracefulStop()
-			return nil
-		},
-	})
+			// زمانی که Stop/GracefulStop اجرا شود،
+			// Serve نیز متوقف می‌شود. بنابراین این log
+			// لزوماً به معنی خطای واقعی نیست.
+			log.Printf(
+				"order-service: gRPC server stopped: %v",
+				err,
+			)
+		}
+	}()
+
+	return nil
+}
+
+// Stop سرور gRPC را به‌صورت graceful متوقف می‌کند.
+//
+// اگر graceful shutdown در مدت ctx تمام نشود، Server به‌صورت
+// اجباری Stop می‌شود تا shutdown کل application گیر نکند.
+func (s *GRPCServer) Stop(ctx context.Context) error {
+
+	done := make(chan struct{})
+
+	go func() {
+		s.server.GracefulStop()
+		close(done)
+	}()
+
+	select {
+
+	case <-done:
+		return nil
+
+	case <-ctx.Done():
+
+		// درخواست‌های باقی‌مانده را بدون انتظار بیشتر قطع می‌کنیم.
+		s.server.Stop()
+
+		return ctx.Err()
+	}
 }
