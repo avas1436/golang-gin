@@ -5,6 +5,7 @@ package repository
 import (
 	"context"
 	stdErrors "errors"
+	"time"
 
 	appErrors "pkg/errors"
 	"pkg/postgres"
@@ -72,6 +73,7 @@ func (
 	order *model.Order,
 ) error {
 
+	// بررسی خالی نبودن سفارش
 	if order == nil {
 		return appErrors.New(
 			appErrors.KindInvalidInput,
@@ -79,90 +81,169 @@ func (
 		)
 	}
 
+	// اعتبار سنجی دیتای سفارش
 	if err := order.Validate(); err != nil {
 		return err
 	}
 
-	err := postgres.WithTx(ctx, r.pool, func(tx pgx.Tx) error {
+	return postgres.WithTx(
+		ctx,
+		r.pool,
+		func(tx pgx.Tx) error {
 
-		insertOrder := `
+			// درج سفارش اصلی
+			insertOrder := `
 			INSERT INTO orders (user_id, total_amount)
 			VALUES ($1, $2)
 			RETURNING id, status, created_at, updated_at
 		`
 
-		if err := tx.QueryRow(
-			ctx,
-			insertOrder,
-			order.UserID,
-			order.TotalAmount,
-		).Scan(
-			&order.ID,
-			&order.Status,
-			&order.CreatedAt,
-			&order.UpdatedAt,
-		); err != nil {
-			return appErrors.Wrap(
-				appErrors.KindInternal,
-				err,
-				"failed to insert order",
-			)
-		}
-
-		insertItem := `
-			INSERT INTO order_items (
-				order_id, 
-				product_id, 
-				product_name, 
-				unit_price, 
-				quantity
-			)
-			VALUES ($1, $2, $3, $4, $5)
-			RETURNING id, created_at
-		`
-
-		for _, item := range order.Items {
-
-			item.OrderID = order.ID
-
 			if err := tx.QueryRow(
 				ctx,
-				insertItem,
-				item.OrderID,
-				item.ProductID,
-				item.ProductName,
-				item.UnitPrice,
-				item.Quantity,
+				insertOrder,
+				order.UserID,
+				order.TotalAmount,
 			).Scan(
-				&item.ID,
-				&item.CreatedAt,
+				&order.ID,
+				&order.Status,
+				&order.CreatedAt,
+				&order.UpdatedAt,
 			); err != nil {
-
-				// uq_order_product جلوی دو ردیف برای یک محصول در
-				// یک سفارش را می‌گیرد؛ این را به یک خطای دامنه‌ی
-				// خوانا تبدیل می‌کنیم، نه یک pgconn.PgError خام
-				var pgErr *pgconn.PgError
-				if stdErrors.As(err, &pgErr) &&
-					pgErr.Code == uniqueViolationCode {
-
-					return appErrors.New(
-						appErrors.KindInvalidInput,
-						"duplicate product in order items",
-					)
-				}
-
 				return appErrors.Wrap(
 					appErrors.KindInternal,
 					err,
-					"failed to insert order item",
+					"failed to insert order",
 				)
 			}
-		}
 
-		return nil
-	})
+			// درج دسته‌جمعی آیتم‌ها برای کاهش تاخیر شبکه
+			n := len(order.Items)
 
-	return err
+			if n > 0 {
+				orderIDs := make([]uuid.UUID, n)
+				productIDs := make([]uuid.UUID, n)
+				productNames := make([]string, n)
+				unitPrices := make([]int64, n)
+				quantities := make([]int32, n)
+
+				// ساخت آرایه های جدید از محتوی سفارش
+				for i, item := range order.Items {
+					item.OrderID = order.ID
+					orderIDs[i] = item.OrderID
+					productIDs[i] = item.ProductID
+					productNames[i] = item.ProductName
+					unitPrices[i] = item.UnitPrice
+					quantities[i] = item.Quantity
+				}
+
+				insertItemsQuery := `
+				INSERT INTO order_items (
+					order_id, 
+					product_id, 
+					product_name, 
+					unit_price, 
+					quantity
+				)
+				SELECT 
+					unnest($1::uuid[]), 
+					unnest($2::uuid[]), 
+					unnest($3::text[]), 
+					unnest($4::bigint[]), 
+					unnest($5::int[])
+				RETURNING id, product_id, created_at
+			`
+
+				rows, err := tx.Query(
+					ctx,
+					insertItemsQuery,
+					orderIDs,
+					productIDs,
+					productNames,
+					unitPrices,
+					quantities,
+				)
+
+				if err != nil {
+					var pgErr *pgconn.PgError
+					if stdErrors.As(
+						err,
+						&pgErr,
+					) && pgErr.Code == uniqueViolationCode {
+
+						return appErrors.New(
+							appErrors.KindInvalidInput,
+							"duplicate product in order items",
+						)
+					}
+
+					return appErrors.Wrap(
+						appErrors.KindInternal,
+						err,
+						"failed to insert order items",
+					)
+				}
+				defer rows.Close()
+
+				// اسکن نتایج و تطبیق با آیتم‌های سفارش بر اساس آیدی محصول
+				//
+				// چون ترتیب RETURNING تضمین‌شده نیست، از map استفاده می‌کنیم.
+				itemIndexByProduct := make(map[uuid.UUID]int, n)
+				for i := range order.Items {
+					itemIndexByProduct[order.Items[i].ProductID] = i
+				}
+
+				scanned := 0
+				for rows.Next() {
+
+					var (
+						itemID    uuid.UUID
+						productID uuid.UUID
+						createdAt time.Time
+					)
+
+					if err := rows.Scan(&itemID, &productID, &createdAt); err != nil {
+
+						return appErrors.Wrap(
+							appErrors.KindInternal,
+							err,
+							"failed to scan inserted order item",
+						)
+
+					}
+
+					idx, ok := itemIndexByProduct[productID]
+					if !ok {
+						return appErrors.New(
+							appErrors.KindInternal,
+							"returned product_id not found in original order items",
+						)
+					}
+
+					order.Items[idx].ID = itemID
+					order.Items[idx].CreatedAt = createdAt
+					scanned++
+				}
+
+				if err := rows.Err(); err != nil {
+					return appErrors.Wrap(
+						appErrors.KindInternal,
+						err,
+						"error iterating inserted order items",
+					)
+				}
+
+				// بررسی تطابق تعداد ردیف‌های درج‌شده با آیتم‌های سفارش
+				if scanned != n {
+					return appErrors.New(
+						appErrors.KindInternal,
+						"mismatch between inserted rows and order items count",
+					)
+				}
+			}
+
+			return nil
+		},
+	)
 }
 
 // دریافت اطلاعات یک سفارش بدون جزییات آیتم ها
