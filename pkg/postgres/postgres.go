@@ -52,6 +52,15 @@ func NewPool(
 	error,
 ) {
 
+	// اعتبار سنجی آدرس
+	if dsn == "" {
+		return nil, appErrors.New(
+			appErrors.KindInvalidInput,
+			"postgres DSN is empty",
+		)
+	}
+
+	// ساخت یک کانکشن جدید
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
 		return nil, appErrors.Wrap(
@@ -61,6 +70,7 @@ func NewPool(
 		)
 	}
 
+	// تست اتصال سالم
 	if err := pool.Ping(ctx); err != nil {
 		return nil, appErrors.Wrap(
 			appErrors.KindInternal,
@@ -83,6 +93,22 @@ func WithTx(
 	pool *pgxpool.Pool,
 	fn func(tx pgx.Tx) error,
 ) error {
+
+	// اعتبار سنجی پول
+	if pool == nil {
+		return appErrors.New(
+			appErrors.KindInternal,
+			"postgres pool is nil",
+		)
+	}
+
+	// اعتبار سنجی توابع داخل تراکنش
+	if fn == nil {
+		return appErrors.New(
+			appErrors.KindInvalidInput,
+			"transaction callback is nil",
+		)
+	}
 
 	tx, err := pool.Begin(ctx)
 	if err != nil {

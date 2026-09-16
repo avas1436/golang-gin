@@ -31,8 +31,20 @@ func New[T any](client *redis.Client) *Cache[T] {
 
 }
 
-// مقدار را می‌خواند. کلید نباشد یا انقضایش تمام شده باشد که از دید
-// ردیس این دو حالت یکی هستند با ok == false و err == nil برمی‌گردد
+// Get مقدار ذخیره‌شده در Redis را می‌خواند.
+//
+// اگر کلید وجود نداشته باشد یا TTL آن تمام شده باشد:
+//
+//	ok  = false
+//	err = nil
+//
+// بنابراین cache miss یک خطای واقعی محسوب نمی‌شود.
+//
+// اگر کلید وجود داشته باشد:
+//
+//	ok = true
+//
+// و مقدار داخل value قرار می‌گیرد.
 func (c *Cache[T]) Get(
 	ctx context.Context,
 	key string,
@@ -41,6 +53,22 @@ func (c *Cache[T]) Get(
 	ok bool,
 	err error,
 ) {
+
+	// بررسی اتصال کلاینت
+	if c == nil || c.client == nil {
+		return value, false, appErrors.New(
+			appErrors.KindInternal,
+			"cache client is nil",
+		)
+	}
+
+	// اعتبار سنجی کلید
+	if key == "" {
+		return value, false, appErrors.New(
+			appErrors.KindInvalidInput,
+			"cache key is empty",
+		)
+	}
 
 	data, err := c.client.Get(ctx, key).Bytes()
 	if err != nil {
@@ -79,6 +107,23 @@ func (c *Cache[T]) Set(
 	ttl time.Duration,
 ) error {
 
+	// بررسی اتصال کلاینت
+	if c == nil || c.client == nil {
+		return appErrors.New(
+			appErrors.KindInternal,
+			"cache client is nil",
+		)
+	}
+
+	// اعتبار سنجی کلید
+	if key == "" {
+		return appErrors.New(
+			appErrors.KindInvalidInput,
+			"cache key is empty",
+		)
+	}
+
+	// اعتبار سنجی زمان انقضای کلید
 	if ttl <= 0 {
 		return appErrors.New(
 			appErrors.KindInvalidInput,
@@ -109,8 +154,19 @@ func (c *Cache[T]) Set(
 // Delete یک یا چند کلید مشخص را پاک می‌کند
 // البته پاک کردن دسته ای با این تابع کار درستی نیست
 // چون میتواند باعث قفل شدن ردیس شود
+// برای حذف تعداد زیادی key بهتر است از DeleteByPrefix
+// استفاده شود
 func (c *Cache[T]) Delete(ctx context.Context, keys ...string) error {
 
+	// بررسی اتصال کلاینت
+	if c == nil || c.client == nil {
+		return appErrors.New(
+			appErrors.KindInternal,
+			"cache client is nil",
+		)
+	}
+
+	// اعتبار سنجی آرایه کلید ها
 	if len(keys) == 0 {
 		return nil
 	}
@@ -135,6 +191,22 @@ func (c *Cache[T]) DeleteByPrefix(
 	ctx context.Context,
 	prefix string,
 ) error {
+
+	// بررسی اتصال کلاینت
+	if c == nil || c.client == nil {
+		return appErrors.New(
+			appErrors.KindInternal,
+			"cache client is nil",
+		)
+	}
+
+	// اعتبار سنجی عبارت
+	if prefix == "" {
+		return appErrors.New(
+			appErrors.KindInvalidInput,
+			"cache prefix is empty",
+		)
+	}
 
 	// یعنی هربار فقط 100 کلید را بررسی کن
 	const scanBatchSize = 100

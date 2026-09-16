@@ -86,7 +86,7 @@
 - [x] [Initial project structure setup](docs/decisions/001-initial-project-structure-setup.md)
 - [x] User Service implementation with JWT
 - [x] Product Service implementation
-- [ ] Order Service implementation with Saga pattern
+- [x] Order Service implementation with Saga pattern
 - [ ] RabbitMQ integration for asynchronous communication
 - [ ] API Gateway implementation
 - [ ] CI/CD pipeline setup
