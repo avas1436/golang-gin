@@ -138,12 +138,15 @@ func (
 			)
 		}
 
+		subTotal := int64(reqItem.Quantity) * product.Price
+
 		items = append(
 			items,
 			&model.OrderItem{
 				ProductID:   productID,
 				ProductName: product.Name,
 				Quantity:    reqItem.Quantity,
+				Subtotal:    subTotal,
 				UnitPrice:   product.Price,
 			},
 		)
