@@ -4,13 +4,25 @@ package auth
 
 import "time"
 
-// TokenManager عملیات مربوط به access/refresh token را پشت یک
-// abstraction واحد جمع می‌کند.
+// TokenManager abstraction مربوط به tokenها.
+//
+// سرویس‌ها به جای وابستگی مستقیم به implementation مربوط به JWT
+// فقط به این interface وابسته می‌شوند.
 type TokenManager interface {
-	GenerateAccessToken(userID, role string) (string, error)
+
+	// ساخت Access Token
+	GenerateAccessToken(userID string, role string) (string, error)
+
+	// بررسی و decode کردن Access Token
 	ParseAccessToken(tokenString string) (*AccessClaims, error)
+
+	// ساخت Refresh Token تصادفی
 	GenerateRefreshToken() (string, error)
+
+	// ساخت hash از Refresh Token
 	HashRefreshToken(token string) string
+
+	// TTL مربوط به Access Token
 	AccessTokenTTL() time.Duration
 }
 
@@ -19,9 +31,10 @@ type tokenManager struct {
 	accessTokenTTL time.Duration
 }
 
-// NewTokenManager یک TokenManager می‌سازد. secret و مدت اعتبار access
-// token فقط همین‌جا نگه داشته می‌شوند، نه در هر سرویسی که ازش استفاده
-// می‌کند.
+// NewTokenManager یک TokenManager می‌سازد.
+//
+// secret و TTL فقط داخل implementation مربوط به auth نگهداری می‌شوند
+// و سرویس‌های مختلف لازم نیست خودشان JWT configuration را مدیریت کنند.
 func NewTokenManager(
 	secret string,
 	accessTokenTTL time.Duration,
@@ -40,11 +53,23 @@ func (
 	userID, role string,
 ) (string, error) {
 
-	return GenerateAccessToken(m.secret, userID, role, m.accessTokenTTL)
+	return GenerateAccessToken(
+		m.secret,
+		userID,
+		role,
+		m.accessTokenTTL,
+	)
 }
 
 // دریافت اطلاعات توکن
-func (m *tokenManager) ParseAccessToken(tokenString string) (*AccessClaims, error) {
+func (
+	m *tokenManager,
+) ParseAccessToken(
+	tokenString string,
+) (
+	*AccessClaims,
+	error,
+) {
 
 	return ParseAccessToken(m.secret, tokenString)
 }
