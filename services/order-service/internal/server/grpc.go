@@ -84,9 +84,6 @@ func NewServer(
 	// فعال‌سازی gRPC Reflection
 	reflection.Register(grpcServer)
 
-	// فعال کردن gRPC Reflection.
-	reflection.Register(grpcServer)
-
 	return &GRPCServer{
 		server: grpcServer,
 	}
