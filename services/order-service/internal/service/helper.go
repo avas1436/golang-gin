@@ -13,6 +13,7 @@ import (
 	"order-service/internal/model"
 
 	"github.com/google/uuid"
+	"golang.org/x/sync/errgroup"
 )
 
 // EventPublisher چیزی است که OrderService برای انتشار Eventها نیاز دارد.
@@ -81,6 +82,10 @@ func parseOrderID(orderID string) (uuid.UUID, error) {
 //
 // این تابع فقط مسئول ساختن itemهای سفارش است.
 // هنوز موجودی را رزرو نمی‌کند.
+//
+// در آخرین آپدیت این تابع به صورت غیر همزمان تمامی درخواست های
+// gRPC رو ارسال میکنه تا حداکثر زمان انجام این تابع به اندازه طولانی ترین
+// درخواست بشه نه مجموع درخواست ها
 func (
 	s *OrderService,
 ) buildOrderItems(
@@ -91,65 +96,83 @@ func (
 	error,
 ) {
 
-	// ساخت یک آرایه خالی برای آیتم های سفارش
-	items := make([]*model.OrderItem, 0, len(reqItems))
-
-	for _, reqItem := range reqItems {
-
-		// بررسی خالی بودن آیتم سفارش
-		if reqItem == nil {
-			return nil, appErrors.New(
-				appErrors.KindInvalidInput,
-				"order item is nil",
-			)
-		}
-
-		// اگر یکی از آیتم ها تعداد کمتر از 1 داشت ارور میدهد
-		if reqItem.Quantity <= 0 {
-			return nil, appErrors.New(
-				appErrors.KindInvalidInput,
-				"item quantity must be greater than zero",
-			)
-		}
-
-		// بررسی اعتبار آیدی محصول
-		productID, err := uuid.Parse(reqItem.ProductId)
-		if err != nil {
-			return nil, appErrors.New(
-				appErrors.KindInvalidInput,
-				"invalid product id"+reqItem.ProductId,
-			)
-		}
-
-		// بررسی وجودیت محصول
-		product, err := s.productClient.GetProduct(
-			ctx,
-			reqItem.ProductId,
+	// بررسی خالی بودن آیتم های سفارش
+	if len(reqItems) == 0 {
+		return nil, appErrors.New(
+			appErrors.KindInvalidInput,
+			"order must contain at least one item",
 		)
-		if err != nil {
-			return nil, err
-		}
+	}
 
-		// بررسی فعال بودن محصول
-		if !product.IsActive {
-			return nil, appErrors.New(
-				appErrors.KindInvalidInput,
-				"product is not active",
+	// ساخت یک آرایه خالی برای آیتم های سفارش
+	items := make([]*model.OrderItem, len(reqItems))
+
+	// یک متغیر برای قرار دادن غیر همزمان تعداد زیادی درخواست
+	var g errgroup.Group
+
+	for i, reqItem := range reqItems {
+
+		// حفظ آیتم و ایندکس آن
+		idx, item := i, reqItem
+
+		// تابع غیر همزمان برای ارسال چندین درخواست gRPC
+		g.Go(func() error {
+
+			// بررسی خالی بودن یک آیتم در سفارش
+			if reqItem == nil {
+				return appErrors.New(
+					appErrors.KindInvalidInput,
+					"order item is nil",
+				)
+			}
+
+			// اگر یکی از آیتم ها تعداد کمتر از 1 داشت ارور میدهد
+			if reqItem.Quantity <= 0 {
+				return appErrors.New(
+					appErrors.KindInvalidInput,
+					"item quantity must be greater than zero",
+				)
+			}
+
+			// بررسی اعتبار آیدی محصول
+			productID, err := uuid.Parse(reqItem.ProductId)
+			if err != nil {
+				return appErrors.New(
+					appErrors.KindInvalidInput,
+					"invalid product id"+reqItem.ProductId,
+				)
+			}
+
+			// بررسی وجودیت محصول
+			product, err := s.productClient.GetProduct(
+				ctx,
+				reqItem.ProductId,
 			)
-		}
+			if err != nil {
+				return err
+			}
 
-		subTotal := int64(reqItem.Quantity) * product.Price
+			// بررسی فعال بودن محصول
+			if !product.IsActive {
+				return appErrors.New(
+					appErrors.KindInvalidInput,
+					"product is not active",
+				)
+			}
 
-		items = append(
-			items,
-			&model.OrderItem{
+			items[idx] = &model.OrderItem{
 				ProductID:   productID,
 				ProductName: product.Name,
-				Quantity:    reqItem.Quantity,
-				Subtotal:    subTotal,
+				Quantity:    item.Quantity,
+				Subtotal:    int64(item.Quantity) * product.Price,
 				UnitPrice:   product.Price,
-			},
-		)
+			}
+			return nil
+		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, err
 	}
 
 	return items, nil
