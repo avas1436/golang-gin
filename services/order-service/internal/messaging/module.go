@@ -4,6 +4,7 @@ package messaging
 
 import (
 	"context"
+	"order-service/internal/service"
 
 	"go.uber.org/fx"
 
@@ -60,7 +61,11 @@ var Module = fx.Module(
 
 	fx.Provide(
 		NewRabbitPublisher,
-		NewRabbitMQEventPublisher,
+
+		fx.Annotate(
+			NewRabbitMQEventPublisher,
+			fx.As(new(service.EventPublisher)),
+		),
 	),
 
 	fx.Invoke(

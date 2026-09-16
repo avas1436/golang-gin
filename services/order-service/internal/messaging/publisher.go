@@ -15,9 +15,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// RabbitMQEventPublisher پیاده‌سازی interface مربوط به
-// انتشار Eventهای Order Service با استفاده از RabbitMQ است.
-//
 // این struct فقط مسئول تبدیل مدل‌های داخلی Order Service
 // به Eventهای قابل انتشار و ارسال آنها به RabbitMQ است.
 //
