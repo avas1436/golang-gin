@@ -24,19 +24,6 @@ type OrderService struct {
 	publisher     EventPublisher
 }
 
-func NewOrderService(
-	orderRepo repository.OrderRepository,
-	productClient client.ProductClient,
-	publisher EventPublisher,
-) *OrderService {
-
-	return &OrderService{
-		orderRepo:     orderRepo,
-		productClient: productClient,
-		publisher:     publisher,
-	}
-}
-
 // CreateOrder هسته‌ی Saga سمت Order Service است.
 //
 // مراحل:
