@@ -2,10 +2,37 @@
 
 package config
 
-import "go.uber.org/fx"
+import (
+	commonConfig "pkg/config"
 
-// ارائه خروجی کانفیگ به Fx
+	"go.uber.org/fx"
+)
+
+func ProvidePostgresConfig(cfg *Config) *commonConfig.PostgresConfig {
+	return &cfg.Postgres
+}
+
+func ProvideRedisConfig(cfg *Config) *commonConfig.RedisConfig {
+	return &cfg.Redis
+}
+
+func ProvideJWTConfig(cfg *Config) *JWTConfig {
+	return &cfg.JWT
+}
+
+func ProvideRabbitMQConfig(cfg *Config) *commonConfig.RabbitMQConfig {
+	return &cfg.RabbitMQ
+}
+
 var Module = fx.Module(
 	"config",
-	fx.Provide(Load),
+
+	fx.Provide(
+		Load,
+
+		ProvidePostgresConfig,
+		ProvideRedisConfig,
+		ProvideJWTConfig,
+		ProvideRabbitMQConfig,
+	),
 )
