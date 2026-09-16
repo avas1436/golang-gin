@@ -265,6 +265,7 @@ func (
 		WHERE id = $1
 	`
 
+	// دریافت اطلاعات اولیه سفارش
 	err := r.pool.QueryRow(
 		ctx,
 		orderQuery,
@@ -293,6 +294,7 @@ func (
 		)
 	}
 
+	// دریافت جزییات آیتم ها و قرار دادن در لیست
 	items, err := r.getItems(ctx, id)
 	if err != nil {
 		return nil, err
@@ -315,8 +317,14 @@ func (
 ) {
 
 	query := `
-		SELECT id, order_id, product_id, product_name,
-		       unit_price, quantity, created_at
+		SELECT 
+			id, 
+			order_id, 
+			product_id, 
+			product_name, 
+			unit_price, 
+			quantity, 
+			created_at
 		FROM order_items
 		WHERE order_id = $1
 		ORDER BY created_at
