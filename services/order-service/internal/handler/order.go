@@ -1,4 +1,4 @@
-// services/order-service/internal/handler/product_handler.go
+// services/order-service/internal/handler/order.go
 
 package handler
 
