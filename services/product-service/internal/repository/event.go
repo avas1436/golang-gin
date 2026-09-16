@@ -13,8 +13,6 @@ import (
 
 // برای جلوگیری از انجام دوباره یک تایید سفارش این رپوزیتوری وجود دارد
 type EventRepository interface {
-
-	// TODO: قانونا این فرایند باید در تراکنش با جدول محصولات باشد که الان نیست
 	MarkProcessed(
 		ctx context.Context,
 		eventID uuid.UUID,
