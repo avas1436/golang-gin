@@ -69,14 +69,18 @@ func NewPendingPayment(
 	amount int64,
 ) *Payment {
 
+	now := time.Now().UTC()
+
 	return &Payment{
-		ID:       uuid.New(),
-		OrderID:  orderID,
-		UserID:   userID,
-		Amount:   amount,
-		Currency: CurrencyIRR,
-		Status:   PaymentStatusPending,
-		Metadata: make(map[string]any),
+		ID:        uuid.New(),
+		OrderID:   orderID,
+		UserID:    userID,
+		Amount:    amount,
+		Currency:  CurrencyIRR,
+		Status:    PaymentStatusPending,
+		Metadata:  make(map[string]any),
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 }
 
@@ -140,20 +144,56 @@ func (p *Payment) CanTransitionTo(next PaymentStatus) bool {
 }
 
 // MarkCompleted نتیجه‌ی موفق شبیه‌سازی/تایید درگاه را روی مدل اعمال می‌کند
-func (p *Payment) MarkCompleted(gatewayName, gatewayRefID string) {
+func (p *Payment) MarkCompleted(gatewayName, gatewayRefID string) error {
+
+	// بررسی اینکه اصلا مجاز به تغییر هست یا نه
+	if !p.CanTransitionTo(PaymentStatusCompleted) {
+		return appErrors.New(
+			appErrors.KindInvalidInput,
+			"payment cannot transition to completed from "+string(p.Status),
+		)
+	}
+
 	p.Status = PaymentStatusCompleted
 	p.GatewayName = &gatewayName
 	p.GatewayRefID = &gatewayRefID
 	p.FailureReason = nil
+	p.UpdatedAt = time.Now().UTC()
+
+	return nil
 }
 
 // MarkFailed نتیجه‌ی ناموفق شبیه‌سازی/تایید درگاه را اعمال می‌کند
-func (p *Payment) MarkFailed(reason string) {
+func (p *Payment) MarkFailed(reason string) error {
+
+	// بررسی اینکه اصلا مجاز به تغییر هست یا نه
+	if !p.CanTransitionTo(PaymentStatusFailed) {
+		return appErrors.New(
+			appErrors.KindInvalidInput,
+			"payment cannot transition to failed from "+string(p.Status),
+		)
+	}
+
 	p.Status = PaymentStatusFailed
 	p.FailureReason = &reason
+	p.UpdatedAt = time.Now().UTC()
+
+	return nil
 }
 
 // MarkExpired منقضی شدن نشست پرداخت را اعمال می‌کند
-func (p *Payment) MarkExpired() {
+func (p *Payment) MarkExpired() error {
+
+	// بررسی اینکه اصلا مجاز به تغییر هست یا نه
+	if !p.CanTransitionTo(PaymentStatusFailed) {
+		return appErrors.New(
+			appErrors.KindInvalidInput,
+			"payment cannot transition to failed from "+string(p.Status),
+		)
+	}
+
 	p.Status = PaymentStatusExpired
+	p.UpdatedAt = time.Now().UTC()
+
+	return nil
 }
