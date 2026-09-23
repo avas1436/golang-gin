@@ -7,12 +7,13 @@ import (
 	stdErrors "errors"
 
 	appErrors "pkg/errors"
+	"pkg/postgres"
 
 	"payment-service/internal/model"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // PaymentRepository رابط کار با دیتابیس برای مدیریت پرداخت‌ها است.
@@ -24,7 +25,6 @@ type PaymentRepository interface {
 	// برای حفظ یکپارچگی داده‌ها، این متد باید حتماً داخل یک تراکنش دیتابیس (tx) اجرا شود.
 	Create(
 		ctx context.Context,
-		tx pgx.Tx,
 		payment *model.Payment,
 	) error
 
@@ -51,24 +51,18 @@ type PaymentRepository interface {
 }
 
 type paymentRepository struct {
-	pool *pgxpool.Pool
+	db postgres.DBTX
 }
 
-func NewPaymentRepository(pool *pgxpool.Pool) PaymentRepository {
-	return &paymentRepository{pool: pool}
+func NewPaymentRepository(db postgres.DBTX) PaymentRepository {
+	return &paymentRepository{db: db}
 }
 
 // Create رکورد جدید پرداخت را ثبت می‌کند.
-//
-// نکته مهم: این متد تراکنش (tx) را از ورودی می‌گیرد تا عملیات ثبت پرداخت
-// و ثبت رویداد (MarkProcessed) با هم در یک تراکنش اتمیک انجام شوند.
-// همچنین اگر از قبل یک پرداخت در جریان برای این order_id وجود داشته باشد،
-// کانسترینت دیتابیس (uq_payments_single_active_order) مانع از ثبت مجدد می‌شود.
 func (
 	r *paymentRepository,
 ) Create(
 	ctx context.Context,
-	tx pgx.Tx,
 	payment *model.Payment,
 ) error {
 
@@ -100,7 +94,7 @@ func (
 	`
 
 	// اجرای کوئری برای ثبت پرداخت
-	err := tx.QueryRow(
+	err := r.db.QueryRow(
 		ctx,
 		query,
 		payment.ID,
@@ -114,16 +108,18 @@ func (
 
 	if err != nil {
 
-		var pgErr interface{ SQLState() string }
+		// PostgreSQL خطاهای خودش را با *pgconn.PgError
+		// برمی‌گرداند.
+		var pgErr *pgconn.PgError
 
 		// بررسی خطای تکراری بودن (Unique Violation در PostgreSQL با کد 23505)
-		if stdErrors.As(err, &pgErr) && pgErr.SQLState() == "23505" {
+		if stdErrors.As(err, &pgErr) &&
+			pgErr.Code == "23505" {
 
 			return appErrors.New(
 				appErrors.KindAlreadyExists,
 				"an active payment already exists for this order",
 			)
-
 		}
 
 		return appErrors.Wrap(
@@ -172,7 +168,7 @@ func (
 
 	p := &model.Payment{}
 
-	err := r.pool.QueryRow(ctx, query, orderID).Scan(
+	err := r.db.QueryRow(ctx, query, orderID).Scan(
 		&p.ID,
 		&p.OrderID,
 		&p.UserID,
