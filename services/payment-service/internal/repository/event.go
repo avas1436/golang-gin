@@ -64,9 +64,10 @@ func (
 			event_id,
 			event_type,
 			order_id,
-			payment_id
+			payment_id,
+			aggregate_type
 		)
-		VALUES ($1, $2, $3, $4)
+		VALUES ($1, $2, $3, $4, $5)
 		ON CONFLICT (event_id) DO NOTHING
 	`
 
@@ -77,6 +78,7 @@ func (
 		eventType,
 		orderID,
 		paymentID,
+		"order",
 	)
 	if err != nil {
 		return false, appErrors.Wrap(
