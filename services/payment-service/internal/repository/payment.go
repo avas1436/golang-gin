@@ -38,7 +38,7 @@ type PaymentRepository interface {
 	)
 
 	// آپدیت وضعیت مستقیماً خود مدل را دریافت می‌کند
-	Update(ctx context.Context, tx pgx.Tx, payment *model.Payment) error
+	Update(ctx context.Context, payment *model.Payment) error
 }
 
 type paymentRepository struct {
@@ -196,7 +196,6 @@ func (
 	r *paymentRepository,
 ) Update(
 	ctx context.Context,
-	tx pgx.Tx,
 	payment *model.Payment,
 ) error {
 
@@ -211,7 +210,7 @@ func (
 		WHERE id = $6
 	`
 
-	result, err := tx.Exec(
+	result, err := r.db.Exec(
 		ctx,
 		query,
 		payment.Status,

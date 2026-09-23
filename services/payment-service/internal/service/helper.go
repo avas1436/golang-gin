@@ -41,6 +41,7 @@ func (
 	success := rand.Intn(100) < 80
 
 	const failureReason = "gateway declined the transaction"
+	var refID string
 
 	err := postgres.WithTx(
 		ctx,
@@ -65,7 +66,7 @@ func (
 			}
 
 			// بروزرسانی دیتابیس با مدل تغییر یافته
-			return txPaymentRepo.Update(ctx, tx, payment)
+			return txPaymentRepo.Update(ctx, payment)
 
 		},
 	)
@@ -85,7 +86,7 @@ func (
 			payment.ID,
 			payment.OrderID,
 			gatewayName,
-			"",
+			refID,
 		); err != nil {
 			log.Printf(
 				"payment-service: failed to publish payment.completed for %s: %v",
@@ -100,7 +101,7 @@ func (
 		ctx,
 		payment.ID,
 		payment.OrderID,
-		"gateway declined the transaction",
+		failureReason,
 	); err != nil {
 		log.Printf(
 			"payment-service: failed to publish payment.failed for %s: %v",

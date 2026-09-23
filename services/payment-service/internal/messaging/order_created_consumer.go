@@ -8,34 +8,29 @@ import (
 	"log"
 
 	"pkg/events"
-	"pkg/postgres"
 
-	"payment-service/internal/model"
-	"payment-service/internal/repository"
+	"payment-service/internal/service"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const eventTypeOrderCreated = "order.created"
-
-// eventTypeOrderCreated پیام‌های order.created را مصرف
-// می‌کند. و یک رکورد پرداخت در حالت pending قرار میدهد
+// OrderCreatedConsumer تنها مسئول decode کردن پیام order.created و
+// اعتبارسنجی سطحی آن است؛ منطق دامنه در
+// service.PaymentService.HandleOrderCreated زندگی می‌کند
 type OrderCreatedConsumer struct {
-	pool *pgxpool.Pool
+	paymentService *service.PaymentService
 }
 
 func NewOrderCreatedConsumer(
-	pool *pgxpool.Pool,
+	paymentService *service.PaymentService,
 ) *OrderCreatedConsumer {
 
 	return &OrderCreatedConsumer{
-		pool: pool,
+		paymentService: paymentService,
 	}
 }
 
-// در این تابع هم دو فرایند در یک تراکنش انجام نمیشوند
+// Handle امضای rabbitmq.HandlerFunc را دارد
 func (
 	h *OrderCreatedConsumer,
 ) Handle(
@@ -46,7 +41,9 @@ func (
 	// اعتبار سنجی متن پیام
 	var event events.OrderCreated
 
-	// دسریلایز رویداد
+	// دسریالایز رویداد؛ بدنه‌ی خراب با تکرار مجدد درست نمی‌شود، پس
+	// nil برمی‌گردانیم تا پیام ACK شود و صف را مسدود نکند (poison
+	// message) — دقیقاً همان تصمیم product-service
 	if err := json.Unmarshal(body, &event); err != nil {
 		log.Printf(
 			"payment-service: failed to unmarshal order created event: %v",
@@ -74,68 +71,11 @@ func (
 		return nil
 	}
 
-	return postgres.WithTx(
+	return h.paymentService.HandleOrderCreated(
 		ctx,
-		h.pool,
-		func(tx pgx.Tx) error {
-
-			eventRepo := repository.NewEventRepository(tx)
-			paymentRepo := repository.NewPaymentRepository(tx)
-
-			// ساخت یک نسخه اولیه از سفارش
-			payment := model.NewPendingPayment(
-				event.OrderID,
-				event.UserID,
-				event.TotalAmount,
-			)
-
-			// ذخیره رویداد در جدول دیتابیس
-			alreadyProcessed, err := eventRepo.MarkProcessed(
-				ctx,
-				event.EventID,
-				eventTypeOrderCreated,
-				&event.OrderID,
-				&payment.ID,
-			)
-
-			// اگر خطا داد
-			if err != nil {
-				log.Printf(
-					"payment-service: failed to record event %s: %v",
-					event.EventID,
-					err,
-				)
-
-				return err
-			}
-
-			// اگر رویداد تکراری بود
-			if alreadyProcessed {
-				log.Printf(
-					"payment-service: event %s already processed, skipping",
-					event.EventID,
-				)
-
-				return nil
-			}
-
-			// ساخت یک رکورد pending پرداخت
-			if err := paymentRepo.Create(
-				ctx,
-				payment,
-			); err != nil {
-
-				log.Printf(
-					"payment-service: failed to create pending payment for order %s: %v",
-					event.OrderID,
-					err,
-				)
-
-				return err
-
-			}
-
-			return nil
-		},
+		event.EventID,
+		event.OrderID,
+		event.UserID,
+		event.TotalAmount,
 	)
 }
