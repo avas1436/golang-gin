@@ -13,6 +13,7 @@ import (
 	"pkg/postgres"
 
 	"payment-service/internal/model"
+	"payment-service/internal/repository"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -39,32 +40,35 @@ func (
 	// ۸۰٪ نرخ موفقیت برای شبیه‌سازی سناریوهای واقعی
 	success := rand.Intn(100) < 80
 
-	err := postgres.WithTx(ctx, s.pool, func(tx pgx.Tx) error {
+	const failureReason = "gateway declined the transaction"
 
-		if success {
-			refID := fmt.Sprintf("ref_%s", uuid.NewString())
-			return s.paymentRepo.UpdateStatus(
-				ctx,
-				tx,
-				payment.ID,
-				model.PaymentStatusCompleted,
-				strPtr(gatewayName),
-				strPtr(refID),
-				nil,
-			)
-		}
+	err := postgres.WithTx(
+		ctx,
+		s.pool,
+		func(tx pgx.Tx) error {
 
-		reason := "gateway declined the transaction"
-		return s.paymentRepo.UpdateStatus(
-			ctx,
-			tx,
-			payment.ID,
-			model.PaymentStatusFailed,
-			nil,
-			nil,
-			&reason,
-		)
-	})
+			txPaymentRepo := repository.NewPaymentRepository(tx)
+
+			if success {
+				refID := fmt.Sprintf("ref_%s", uuid.NewString())
+
+				// استفاده از متد مدل به جای وارد کردن دستی مقادیر
+				if err := payment.MarkCompleted(gatewayName, refID); err != nil {
+					return err
+				}
+
+			} else {
+				// اعمال State Transition روی Domain Model
+				if err := payment.MarkFailed(failureReason); err != nil {
+					return err
+				}
+			}
+
+			// بروزرسانی دیتابیس با مدل تغییر یافته
+			return txPaymentRepo.Update(ctx, tx, payment)
+
+		},
+	)
 
 	if err != nil {
 		log.Printf(
