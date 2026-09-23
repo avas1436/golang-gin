@@ -2,7 +2,15 @@
 
 package repository
 
-import "go.uber.org/fx"
+import (
+	"pkg/postgres"
+
+	"go.uber.org/fx"
+)
+
+func NewPaymentRepository(db postgres.DBTX) PaymentRepository {
+	return &paymentRepository{db: db}
+}
 
 var Module = fx.Module(
 	"repository",

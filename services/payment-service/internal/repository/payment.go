@@ -37,25 +37,12 @@ type PaymentRepository interface {
 		error,
 	)
 
-	// UpdateStatus وضعیت یک پرداخت را تغییر می‌دهد (مثلاً از pending به success یا failed).
-	// این متد نیازمند تراکنش دیتابیس (tx) است.
-	UpdateStatus(
-		ctx context.Context,
-		tx pgx.Tx,
-		id uuid.UUID,
-		next model.PaymentStatus,
-		gatewayName *string,
-		gatewayRefID *string,
-		failureReason *string,
-	) error
+	// آپدیت وضعیت مستقیماً خود مدل را دریافت می‌کند
+	Update(ctx context.Context, tx pgx.Tx, payment *model.Payment) error
 }
 
 type paymentRepository struct {
 	db postgres.DBTX
-}
-
-func NewPaymentRepository(db postgres.DBTX) PaymentRepository {
-	return &paymentRepository{db: db}
 }
 
 // Create رکورد جدید پرداخت را ثبت می‌کند.
@@ -207,14 +194,10 @@ func (
 // بتوانند وضعیت یک پرداخت تعیین‌تکلیف‌شده را دوباره تغییر دهند.
 func (
 	r *paymentRepository,
-) UpdateStatus(
+) Update(
 	ctx context.Context,
 	tx pgx.Tx,
-	id uuid.UUID,
-	next model.PaymentStatus,
-	gatewayName *string,
-	gatewayRefID *string,
-	failureReason *string,
+	payment *model.Payment,
 ) error {
 
 	query := `
@@ -224,20 +207,19 @@ func (
 			gateway_name   = $2,
 			gateway_ref_id = $3,
 			failure_reason = $4,
-			updated_at     = NOW()
-		WHERE id = $5
-		  AND status = $6
+			updated_at     = $5
+		WHERE id = $6
 	`
 
 	result, err := tx.Exec(
 		ctx,
 		query,
-		next,
-		gatewayName,
-		gatewayRefID,
-		failureReason,
-		id,
-		model.PaymentStatusPending,
+		payment.Status,
+		payment.GatewayName,
+		payment.GatewayRefID,
+		payment.FailureReason,
+		payment.UpdatedAt,
+		payment.ID,
 	)
 	if err != nil {
 		return appErrors.Wrap(
