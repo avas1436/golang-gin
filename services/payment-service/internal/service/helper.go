@@ -41,7 +41,13 @@ func (
 	success := rand.Intn(100) < 80
 
 	const failureReason = "gateway declined the transaction"
+
+	// refID قبل از تراکنش ساخته می‌شود تا همان مقداری که در دیتابیس
+	// ذخیره می‌شود، عیناً در رویداد payment.completed هم منتشر شود.
 	var refID string
+	if success {
+		refID = fmt.Sprintf("ref_%s", uuid.NewString())
+	}
 
 	err := postgres.WithTx(
 		ctx,
@@ -51,7 +57,6 @@ func (
 			txPaymentRepo := repository.NewPaymentRepository(tx)
 
 			if success {
-				refID = fmt.Sprintf("ref_%s", uuid.NewString())
 
 				// استفاده از متد مدل به جای وارد کردن دستی مقادیر
 				if err := payment.MarkCompleted(gatewayName, refID); err != nil {
@@ -66,7 +71,7 @@ func (
 			}
 
 			// بروزرسانی دیتابیس با مدل تغییر یافته
-			return txPaymentRepo.Update(ctx, payment)
+			return txPaymentRepo.UpdateFromPending(ctx, payment)
 
 		},
 	)
@@ -110,8 +115,6 @@ func (
 		)
 	}
 }
-
-func strPtr(s string) *string { return &s }
 
 const roleAdmin = "admin"
 

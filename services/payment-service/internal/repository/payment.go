@@ -38,7 +38,7 @@ type PaymentRepository interface {
 	)
 
 	// آپدیت وضعیت مستقیماً خود مدل را دریافت می‌کند
-	Update(ctx context.Context, payment *model.Payment) error
+	UpdateFromPending(ctx context.Context, payment *model.Payment) error
 }
 
 type paymentRepository struct {
@@ -205,6 +205,10 @@ func (
 			appErrors.KindInvalidInput,
 			"payment cannot be nil",
 		)
+	}
+
+	if err := payment.Validate(); err != nil {
+		return err
 	}
 
 	query := `
