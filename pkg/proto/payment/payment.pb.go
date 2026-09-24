@@ -160,10 +160,11 @@ func (x *Payment) GetUpdatedAt() *timestamppb.Timestamp {
 
 // --- Get Payment By Order ID ---
 // این تنها متد gRPC این سرویس است و صرفاً برای دیباگ/ادمین وجود
-// دارد؛ طبق معماری Saga، Order Service نتیجه‌ی پرداخت را از طریق
-// رویدادهای payment.completed/payment.failed می‌گیرد نه با فراخوانی
-// sync این متد، و کلاینت نهایی هم باید وضعیت سفارش را از Order
-// Service بپرسد، نه مستقیم از Payment Service
+// دارد؛ طبق معماری Saga، Order Service نتیجه‌ی پرداخت را از
+// طریق
+// رویدادهای payment.completed/payment.failed می‌گیرد نه با
+// فراخوانی sync این متد، و کلاینت نهایی هم باید وضعیت سفارش را از Order Service
+// بپرسد، نه مستقیم از Payment Service
 type GetPaymentByOrderIDRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	OrderId       string                 `protobuf:"bytes,1,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
@@ -208,6 +209,119 @@ func (x *GetPaymentByOrderIDRequest) GetOrderId() string {
 	return ""
 }
 
+// --- Verify Payment ---
+type VerifyPaymentRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Authority     string                 `protobuf:"bytes,1,opt,name=authority,proto3" json:"authority,omitempty"`
+	Status        string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *VerifyPaymentRequest) Reset() {
+	*x = VerifyPaymentRequest{}
+	mi := &file_payment_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *VerifyPaymentRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*VerifyPaymentRequest) ProtoMessage() {}
+
+func (x *VerifyPaymentRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_payment_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use VerifyPaymentRequest.ProtoReflect.Descriptor instead.
+func (*VerifyPaymentRequest) Descriptor() ([]byte, []int) {
+	return file_payment_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *VerifyPaymentRequest) GetAuthority() string {
+	if x != nil {
+		return x.Authority
+	}
+	return ""
+}
+
+func (x *VerifyPaymentRequest) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+type VerifyPaymentResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	OrderId       string                 `protobuf:"bytes,1,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
+	Status        string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
+	RefId         string                 `protobuf:"bytes,3,opt,name=ref_id,json=refId,proto3" json:"ref_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *VerifyPaymentResponse) Reset() {
+	*x = VerifyPaymentResponse{}
+	mi := &file_payment_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *VerifyPaymentResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*VerifyPaymentResponse) ProtoMessage() {}
+
+func (x *VerifyPaymentResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_payment_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use VerifyPaymentResponse.ProtoReflect.Descriptor instead.
+func (*VerifyPaymentResponse) Descriptor() ([]byte, []int) {
+	return file_payment_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *VerifyPaymentResponse) GetOrderId() string {
+	if x != nil {
+		return x.OrderId
+	}
+	return ""
+}
+
+func (x *VerifyPaymentResponse) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *VerifyPaymentResponse) GetRefId() string {
+	if x != nil {
+		return x.RefId
+	}
+	return ""
+}
+
 var File_payment_proto protoreflect.FileDescriptor
 
 const file_payment_proto_rawDesc = "" +
@@ -230,9 +344,17 @@ const file_payment_proto_rawDesc = "" +
 	"\n" +
 	"updated_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"7\n" +
 	"\x1aGetPaymentByOrderIDRequest\x12\x19\n" +
-	"\border_id\x18\x01 \x01(\tR\aorderId2^\n" +
+	"\border_id\x18\x01 \x01(\tR\aorderId\"L\n" +
+	"\x14VerifyPaymentRequest\x12\x1c\n" +
+	"\tauthority\x18\x01 \x01(\tR\tauthority\x12\x16\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status\"a\n" +
+	"\x15VerifyPaymentResponse\x12\x19\n" +
+	"\border_id\x18\x01 \x01(\tR\aorderId\x12\x16\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status\x12\x15\n" +
+	"\x06ref_id\x18\x03 \x01(\tR\x05refId2\xae\x01\n" +
 	"\x0ePaymentService\x12L\n" +
-	"\x13GetPaymentByOrderID\x12#.payment.GetPaymentByOrderIDRequest\x1a\x10.payment.PaymentB\x13Z\x11pkg/proto/paymentb\x06proto3"
+	"\x13GetPaymentByOrderID\x12#.payment.GetPaymentByOrderIDRequest\x1a\x10.payment.Payment\x12N\n" +
+	"\rVerifyPayment\x12\x1d.payment.VerifyPaymentRequest\x1a\x1e.payment.VerifyPaymentResponseB\x13Z\x11pkg/proto/paymentb\x06proto3"
 
 var (
 	file_payment_proto_rawDescOnce sync.Once
@@ -246,21 +368,25 @@ func file_payment_proto_rawDescGZIP() []byte {
 	return file_payment_proto_rawDescData
 }
 
-var file_payment_proto_msgTypes = make([]protoimpl.MessageInfo, 2)
+var file_payment_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_payment_proto_goTypes = []any{
 	(*Payment)(nil),                    // 0: payment.Payment
 	(*GetPaymentByOrderIDRequest)(nil), // 1: payment.GetPaymentByOrderIDRequest
-	(*structpb.Struct)(nil),            // 2: google.protobuf.Struct
-	(*timestamppb.Timestamp)(nil),      // 3: google.protobuf.Timestamp
+	(*VerifyPaymentRequest)(nil),       // 2: payment.VerifyPaymentRequest
+	(*VerifyPaymentResponse)(nil),      // 3: payment.VerifyPaymentResponse
+	(*structpb.Struct)(nil),            // 4: google.protobuf.Struct
+	(*timestamppb.Timestamp)(nil),      // 5: google.protobuf.Timestamp
 }
 var file_payment_proto_depIdxs = []int32{
-	2, // 0: payment.Payment.metadata:type_name -> google.protobuf.Struct
-	3, // 1: payment.Payment.created_at:type_name -> google.protobuf.Timestamp
-	3, // 2: payment.Payment.updated_at:type_name -> google.protobuf.Timestamp
+	4, // 0: payment.Payment.metadata:type_name -> google.protobuf.Struct
+	5, // 1: payment.Payment.created_at:type_name -> google.protobuf.Timestamp
+	5, // 2: payment.Payment.updated_at:type_name -> google.protobuf.Timestamp
 	1, // 3: payment.PaymentService.GetPaymentByOrderID:input_type -> payment.GetPaymentByOrderIDRequest
-	0, // 4: payment.PaymentService.GetPaymentByOrderID:output_type -> payment.Payment
-	4, // [4:5] is the sub-list for method output_type
-	3, // [3:4] is the sub-list for method input_type
+	2, // 4: payment.PaymentService.VerifyPayment:input_type -> payment.VerifyPaymentRequest
+	0, // 5: payment.PaymentService.GetPaymentByOrderID:output_type -> payment.Payment
+	3, // 6: payment.PaymentService.VerifyPayment:output_type -> payment.VerifyPaymentResponse
+	5, // [5:7] is the sub-list for method output_type
+	3, // [3:5] is the sub-list for method input_type
 	3, // [3:3] is the sub-list for extension type_name
 	3, // [3:3] is the sub-list for extension extendee
 	0, // [0:3] is the sub-list for field type_name
@@ -277,7 +403,7 @@ func file_payment_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_payment_proto_rawDesc), len(file_payment_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   2,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

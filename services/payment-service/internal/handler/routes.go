@@ -11,14 +11,23 @@ import (
 // PublicMethods لیست متدهای عمومی است (بدون نیاز به JWT معتبر)
 // متد GetPaymentByOrderID نیازمند احراز هویت (و نقش admin) است، پس این نقشه خالی برمی‌گردد
 func PublicMethods() map[string]bool {
-	return map[string]bool{}
+
+	return map[string]bool{
+		pb.PaymentService_VerifyPayment_FullMethodName: true,
+	}
+
 }
 
 // RateLimitRules قوانین محدودیت تعداد درخواست به ازای هر متد را مشخص می‌کند
 func RateLimitRules() map[string]grpcmiddleware.RateLimitRule {
+
 	return map[string]grpcmiddleware.RateLimitRule{
 		pb.PaymentService_GetPaymentByOrderID_FullMethodName: {
 			Limit: ratelimit.PerMinute(30),
 		},
+		pb.PaymentService_VerifyPayment_FullMethodName: {
+			Limit: ratelimit.PerMinute(60),
+		},
 	}
+
 }

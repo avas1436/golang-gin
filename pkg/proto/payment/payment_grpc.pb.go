@@ -22,13 +22,18 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	PaymentService_GetPaymentByOrderID_FullMethodName = "/payment.PaymentService/GetPaymentByOrderID"
+	PaymentService_VerifyPayment_FullMethodName       = "/payment.PaymentService/VerifyPayment"
 )
 
 // PaymentServiceClient is the client API for PaymentService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type PaymentServiceClient interface {
+	// دریافت اطلاعات پرداخت (نیازمند احراز هویت)
 	GetPaymentByOrderID(ctx context.Context, in *GetPaymentByOrderIDRequest, opts ...grpc.CallOption) (*Payment, error)
+	// تایید و استعلام پرداخت از درگاه زرین‌پال (فراخوانی توسط API Gateway در
+	// کالبک عمومی)
+	VerifyPayment(ctx context.Context, in *VerifyPaymentRequest, opts ...grpc.CallOption) (*VerifyPaymentResponse, error)
 }
 
 type paymentServiceClient struct {
@@ -49,11 +54,25 @@ func (c *paymentServiceClient) GetPaymentByOrderID(ctx context.Context, in *GetP
 	return out, nil
 }
 
+func (c *paymentServiceClient) VerifyPayment(ctx context.Context, in *VerifyPaymentRequest, opts ...grpc.CallOption) (*VerifyPaymentResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(VerifyPaymentResponse)
+	err := c.cc.Invoke(ctx, PaymentService_VerifyPayment_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // PaymentServiceServer is the server API for PaymentService service.
 // All implementations must embed UnimplementedPaymentServiceServer
 // for forward compatibility.
 type PaymentServiceServer interface {
+	// دریافت اطلاعات پرداخت (نیازمند احراز هویت)
 	GetPaymentByOrderID(context.Context, *GetPaymentByOrderIDRequest) (*Payment, error)
+	// تایید و استعلام پرداخت از درگاه زرین‌پال (فراخوانی توسط API Gateway در
+	// کالبک عمومی)
+	VerifyPayment(context.Context, *VerifyPaymentRequest) (*VerifyPaymentResponse, error)
 	mustEmbedUnimplementedPaymentServiceServer()
 }
 
@@ -66,6 +85,9 @@ type UnimplementedPaymentServiceServer struct{}
 
 func (UnimplementedPaymentServiceServer) GetPaymentByOrderID(context.Context, *GetPaymentByOrderIDRequest) (*Payment, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetPaymentByOrderID not implemented")
+}
+func (UnimplementedPaymentServiceServer) VerifyPayment(context.Context, *VerifyPaymentRequest) (*VerifyPaymentResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method VerifyPayment not implemented")
 }
 func (UnimplementedPaymentServiceServer) mustEmbedUnimplementedPaymentServiceServer() {}
 func (UnimplementedPaymentServiceServer) testEmbeddedByValue()                        {}
@@ -106,6 +128,24 @@ func _PaymentService_GetPaymentByOrderID_Handler(srv interface{}, ctx context.Co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _PaymentService_VerifyPayment_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(VerifyPaymentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PaymentServiceServer).VerifyPayment(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PaymentService_VerifyPayment_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PaymentServiceServer).VerifyPayment(ctx, req.(*VerifyPaymentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // PaymentService_ServiceDesc is the grpc.ServiceDesc for PaymentService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -116,6 +156,10 @@ var PaymentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetPaymentByOrderID",
 			Handler:    _PaymentService_GetPaymentByOrderID_Handler,
+		},
+		{
+			MethodName: "VerifyPayment",
+			Handler:    _PaymentService_VerifyPayment_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
