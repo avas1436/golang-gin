@@ -37,8 +37,23 @@ type PaymentRepository interface {
 		error,
 	)
 
+	// GetByAuthority رکورد پرداخت را بر اساس شناسه Authority دریافت شده از کالبک درگاه پیدا می‌کند.
+	GetByAuthority(
+		ctx context.Context,
+		authority string,
+	) (
+		*model.Payment,
+		error,
+	)
+
 	// آپدیت وضعیت مستقیماً خود مدل را دریافت می‌کند
 	UpdateFromPending(ctx context.Context, payment *model.Payment) error
+
+	// Update به‌روزرسانی کلی وضعیت پرداخت را انجام می‌دهد
+	Update(
+		ctx context.Context,
+		payment *model.Payment,
+	) error
 }
 
 type paymentRepository struct {
@@ -188,6 +203,82 @@ func (
 	return p, nil
 }
 
+// GetByAuthority جستجوی پرداخت بر اساس شناسه Authority زرین‌پال در هنگام کالبک بانک
+func (
+	r *paymentRepository,
+) GetByAuthority(
+	ctx context.Context,
+	authority string,
+) (
+	*model.Payment,
+	error,
+) {
+
+	if authority == "" {
+		return nil, appErrors.New(
+			appErrors.KindInvalidInput,
+			"authority cannot be empty",
+		)
+	}
+
+	query := `
+        SELECT
+            id,
+            order_id,
+            user_id,
+            amount,
+            currency,
+            status,
+            gateway_name,
+            gateway_ref_id,
+            authority,
+            redirect_url,
+            failure_reason,
+            metadata,
+            created_at,
+            updated_at
+        FROM payments
+        WHERE authority = $1
+        LIMIT 1
+    `
+
+	p := &model.Payment{}
+
+	err := r.db.QueryRow(ctx, query, authority).Scan(
+		&p.ID,
+		&p.OrderID,
+		&p.UserID,
+		&p.Amount,
+		&p.Currency,
+		&p.Status,
+		&p.GatewayName,
+		&p.GatewayRefID,
+		&p.Authority,
+		&p.RedirectURL,
+		&p.FailureReason,
+		&p.Metadata,
+		&p.CreatedAt,
+		&p.UpdatedAt,
+	)
+
+	if err != nil {
+		if stdErrors.Is(err, pgx.ErrNoRows) {
+			return nil, appErrors.New(
+				appErrors.KindNotFound,
+				"payment not found for this authority",
+			)
+		}
+
+		return nil, appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to get payment by authority",
+		)
+	}
+
+	return p, nil
+}
+
 // UpdateStatus وضعیت پرداخت را فقط در صورتی به‌روزرسانی می‌کند که وضعیت فعلی آن pending باشد.
 //
 // شرط `status = pending` مانع از این می‌شود که دو پردازش هم‌زمان (Race Condition)
@@ -249,6 +340,66 @@ func (
 		return appErrors.New(
 			appErrors.KindAlreadyExists,
 			"payment is not in a pending state",
+		)
+	}
+
+	return nil
+}
+
+// Update کلیه مقادیر پرداخت را بر اساس ID به‌روزرسانی می‌کند.
+func (
+	r *paymentRepository,
+) Update(
+	ctx context.Context,
+	payment *model.Payment,
+) error {
+
+	if payment == nil {
+		return appErrors.New(
+			appErrors.KindInvalidInput,
+			"payment cannot be nil",
+		)
+	}
+
+	query := `
+        UPDATE payments
+        SET
+            status         = $1,
+            gateway_name   = $2,
+            gateway_ref_id = $3,
+            authority      = $4,
+            redirect_url   = $5,
+            failure_reason = $6,
+            metadata       = $7,
+            updated_at     = $8
+        WHERE id = $9
+    `
+
+	result, err := r.db.Exec(
+		ctx,
+		query,
+		payment.Status,
+		payment.GatewayName,
+		payment.GatewayRefID,
+		payment.Authority,
+		payment.RedirectURL,
+		payment.FailureReason,
+		payment.Metadata,
+		payment.UpdatedAt,
+		payment.ID,
+	)
+	if err != nil {
+		return appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to update payment",
+		)
+	}
+
+	if result.RowsAffected() == 0 {
+		return appErrors.New(
+			appErrors.KindNotFound,
+			"payment record not found",
 		)
 	}
 
