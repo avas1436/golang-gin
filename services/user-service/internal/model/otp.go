@@ -2,10 +2,20 @@
 
 package model
 
-// این قسمت اطلاعات یک چالش فعال را در ردیس موقتا نگه میدارد
+import "time"
+
+// OTPChallenge اطلاعات چالش OTP در ردیس
 type OTPChallenge struct {
-	ID          string
-	UserID      string
-	PhoneNumber string
-	Code        string
+	ID          string    `json:"id"`
+	UserID      string    `json:"user_id"`
+	PhoneNumber string    `json:"phone_number"`
+	Code        string    `json:"code"`
+	ExpiresAt   time.Time `json:"expires_at"`
+}
+
+// IsExpired بررسی انقضای کد OTP
+func (o *OTPChallenge) IsExpired() bool {
+
+	return time.Now().After(o.ExpiresAt)
+
 }
