@@ -4,13 +4,10 @@ package client
 
 import (
 	"context"
-
-	"github.com/google/uuid"
 )
 
-// PaymentRequestInput داده‌های مورد نیاز برای شروع یک تراکنش
+// PaymentRequestInput داده‌های لازم برای ایجاد یک درخواست پرداخت است.
 type PaymentRequestInput struct {
-	OrderID     uuid.UUID
 	Amount      int64
 	Description string
 	CallbackURL string
@@ -18,7 +15,7 @@ type PaymentRequestInput struct {
 	Mobile      string
 }
 
-// PaymentRequestOutput خروجی حاصل از ثبت درخواست در درگاه
+// PaymentRequestOutput نتیجه ایجاد درخواست پرداخت در Gateway است.
 type PaymentRequestOutput struct {
 	Authority   string // شناسه منحصر به فرد تراکنش در زرین‌پال
 	RedirectURL string // لینک کامل هدایت کاربر به درگاه بانک
@@ -33,11 +30,15 @@ type PaymentVerifyInput struct {
 // PaymentVerifyOutput نتیجه تاییدیه نهایی از سوی درگاه
 type PaymentVerifyOutput struct {
 	RefID   string // شماره پیگیری دیجیتال (RRN) صادر شده توسط بانک
-	Success bool
+	Success bool   // آیا پرداخت با موفقیت تأیید شده است؟
 	CardPan string // شماره کارت ماسک‌شده پرداخت‌کننده
 }
 
-// GatewayClient اینترفیس عمومی متصل‌کننده سرویس به درگاه‌های پرداخت است
+// GatewayClient قرارداد مشترک تمام درگاه‌های پرداخت است.
+//
+// # Service فقط با این interface کار می‌کند و
+//
+//	به پیاده‌سازی خاصی مثل ZarinPal وابسته نیست.
 type GatewayClient interface {
 	RequestPayment(
 		ctx context.Context,
