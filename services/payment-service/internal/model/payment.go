@@ -101,10 +101,10 @@ func (p *Payment) Validate() error {
 		)
 	}
 
-	if p.Amount < 0 {
+	if p.Amount <= 0 {
 		return appErrors.New(
 			appErrors.KindInvalidInput,
-			"payment amount cannot be negative",
+			"payment amount must be greater than zero",
 		)
 	}
 
@@ -185,10 +185,10 @@ func (p *Payment) MarkFailed(reason string) error {
 func (p *Payment) MarkExpired() error {
 
 	// بررسی اینکه اصلا مجاز به تغییر هست یا نه
-	if !p.CanTransitionTo(PaymentStatusFailed) {
+	if !p.CanTransitionTo(PaymentStatusExpired) {
 		return appErrors.New(
 			appErrors.KindInvalidInput,
-			"payment cannot transition to failed from "+string(p.Status),
+			"payment cannot transition to expired from "+string(p.Status),
 		)
 	}
 
