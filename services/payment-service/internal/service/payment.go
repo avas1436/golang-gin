@@ -4,12 +4,15 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"log"
 
 	appErrors "pkg/errors"
 	"pkg/postgres"
 	pb "pkg/proto/payment"
 
+	"payment-service/config"
+	"payment-service/internal/client"
 	"payment-service/internal/model"
 	"payment-service/internal/repository"
 
@@ -40,7 +43,9 @@ type EventPublisher interface {
 type PaymentService struct {
 	pool        *pgxpool.Pool
 	paymentRepo repository.PaymentRepository
+	gateway     client.GatewayClient
 	publisher   EventPublisher
+	cfg         *config.Config
 }
 
 // HandleOrderCreated زمانی اجرا می‌شود که payment-service
@@ -121,7 +126,75 @@ func (
 		return err
 	}
 
-	s.simulateGatewayAndFinalize(ctx, payment)
+	// ساختار درخواست لینک پرداخت از زرین پال
+	reqInput := client.PaymentRequestInput{
+		Amount:      payment.Amount,
+		Description: fmt.Sprintf("پرداخت سفارش %s", payment.OrderID.String()),
+		CallbackURL: s.cfg.ZarinPal.PaymentCallbackURL,
+	}
+
+	// درخواست لینک پرداخت از درگاه زرین‌پال
+	reqOutput, err := s.gateway.RequestPayment(ctx, reqInput)
+
+	// اگر شکست خورد
+	if err != nil {
+
+		// ساخت فرمت دلیل شکست درخواست
+		reason := fmt.Sprintf(
+			"failed to get authority from zarinpal: %v",
+			err,
+		)
+
+		// تبدیل ساختار پرداخت به شکست خورده
+		_ = payment.MarkFailed(reason)
+
+		// اعمال کردن ساختار در دیتابیس
+		_ = s.paymentRepo.UpdateFromPending(ctx, payment)
+
+		// انتشار رویداد شکست خوردن پرداخت
+		_ = s.publisher.PublishPaymentFailed(
+			ctx,
+			payment.ID,
+			payment.OrderID,
+			reason,
+		)
+
+		log.Printf(
+			"payment-service: failed to initiate zarinpal payment for order %s: %v",
+			orderID,
+			err,
+		)
+
+		return nil
+	}
+
+	// ثبت Authority و RedirectURL در دیتابیس و تغییر وضعیت به AWAITING_PAYMENT
+	if err := payment.MarkAwaitingPayment(
+		"zarinpal",
+		reqOutput.Authority,
+		reqOutput.RedirectURL,
+	); err != nil {
+
+		return err
+	}
+
+	// ثبت نهایی وضعیت پرداخت
+	if err := s.paymentRepo.UpdateFromPending(ctx, payment); err != nil {
+
+		log.Printf(
+			"payment-service: failed to update payment awaiting status for order %s: %v",
+			orderID,
+			err,
+		)
+
+		return err
+	}
+
+	log.Printf(
+		"payment-service: payment initialized for order %s, authority: %s",
+		orderID,
+		reqOutput.Authority,
+	)
 
 	return nil
 }
