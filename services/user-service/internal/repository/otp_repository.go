@@ -6,7 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	stdErrors "errors"
-	"fmt"
+	"pkg/cache"
 	appErrors "pkg/errors"
 	"time"
 	"user-service/internal/model"
@@ -37,18 +37,24 @@ type OTPRepository interface {
 }
 
 type otpRepository struct {
-	client *redis.Client
+	client     *redis.Client
+	keyBuilder cache.KeyBuilder
 }
 
 func NewOTPRepository(client *redis.Client) OTPRepository {
 
-	return &otpRepository{client: client}
+	return &otpRepository{
+		client:     client,
+		keyBuilder: cache.NewKeyBuilder("user-service"),
+	}
 
 }
 
-// challengeKey کلید Redis برای ذخیره چالش OTP
-func challengeKey(id uuid.UUID) string {
-	return fmt.Sprintf("otp_challenge:%s", id.String())
+// کلید Redis برای ذخیره چالش OTP
+func (r *otpRepository) key(id uuid.UUID) string {
+
+	return r.keyBuilder.Build("otp", id.String())
+
 }
 
 func (
@@ -115,7 +121,7 @@ func (
 	// ذخیره در ردیس
 	if err := r.client.Set(
 		ctx,
-		challengeKey(challenge.ID),
+		r.key(challenge.ID),
 		data,
 		ttl,
 	).Err(); err != nil {
@@ -150,7 +156,7 @@ func (
 	}
 
 	// دریافت مقدار از ردیس
-	data, err := r.client.Get(ctx, challengeKey(challengeID)).Bytes()
+	data, err := r.client.Get(ctx, r.key(challengeID)).Bytes()
 
 	if err != nil {
 
@@ -213,7 +219,7 @@ func (
 	}
 
 	// حذف چالش
-	if err := r.client.Del(ctx, challengeKey(challengeID)).Err(); err != nil {
+	if err := r.client.Del(ctx, r.key(challengeID)).Err(); err != nil {
 
 		return appErrors.Wrap(
 			appErrors.KindInternal,
