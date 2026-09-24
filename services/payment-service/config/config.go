@@ -15,6 +15,7 @@ type Config struct {
 	Redis    commonConfig.RedisConfig
 	RabbitMQ commonConfig.RabbitMQConfig
 	JWT      commonConfig.JWTConfig
+	ZarinPal commonConfig.ZarinpalConfig
 }
 
 // Load مقادیر را از متغیرهای محیطی می‌خواند.
@@ -75,6 +76,17 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
+	// اطلاعات لازم برای زرین پال
+	merchantID, err := env.Require("MERCHANT_ID")
+	if err != nil {
+		return nil, err
+	}
+
+	isSandbox, err := env.Bool("IS_SANDBOX", true)
+	if err != nil {
+		return nil, err
+	}
+
 	cfg := &Config{
 		GRPCPort: env.String("GRPC_PORT", "50054"),
 
@@ -107,6 +119,11 @@ func Load() (*Config, error) {
 		JWT: commonConfig.JWTConfig{
 			Secret:         jwtSecret,
 			AccessTokenTTL: accessTTL,
+		},
+
+		ZarinPal: commonConfig.ZarinpalConfig{
+			MerchantID: merchantID,
+			IsSandbox:  isSandbox,
 		},
 	}
 
