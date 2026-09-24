@@ -11,6 +11,7 @@ import (
 	"time"
 	"user-service/internal/model"
 
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -23,7 +24,7 @@ type OTPRepository interface {
 
 	GetChallenge(
 		ctx context.Context,
-		challengeID string,
+		challengeID uuid.UUID,
 	) (
 		*model.OTPChallenge,
 		error,
@@ -31,7 +32,7 @@ type OTPRepository interface {
 
 	DeleteChallenge(
 		ctx context.Context,
-		challengeID string,
+		challengeID uuid.UUID,
 	) error
 }
 
@@ -46,66 +47,8 @@ func NewOTPRepository(client *redis.Client) OTPRepository {
 }
 
 // challengeKey کلید Redis برای ذخیره چالش OTP
-func challengeKey(id string) string {
-
-	return fmt.Sprintf("otp_challenge:%s", id)
-
-}
-
-// GetChallenge یک چالش OTP را با ID آن دریافت می‌کند
-func (
-	r *otpRepository,
-) GetChallenge(
-	ctx context.Context,
-	challengeID string,
-) (
-	*model.OTPChallenge,
-	error,
-) {
-
-	// اعتبارسنجی ورودی
-	if challengeID == "" {
-		return nil, appErrors.New(
-			appErrors.KindInvalidInput,
-			"challenge id cannot be empty",
-		)
-	}
-
-	data, err := r.client.Get(ctx, challengeKey(challengeID)).Bytes()
-
-	if err != nil {
-
-		if stdErrors.Is(err, redis.Nil) {
-
-			return nil, appErrors.New(
-				appErrors.KindNotFound,
-				"OTP challenge not found or expired",
-			)
-
-		}
-
-		return nil, appErrors.Wrap(
-			appErrors.KindInternal,
-			err,
-			"failed to get OTP challenge from Redis",
-		)
-
-	}
-
-	challenge := &model.OTPChallenge{}
-
-	if err := json.Unmarshal(data, challenge); err != nil {
-
-		return nil, appErrors.Wrap(
-			appErrors.KindInternal,
-			err,
-			"failed to unmarshal OTP challenge",
-		)
-
-	}
-
-	return challenge, nil
-
+func challengeKey(id uuid.UUID) string {
+	return fmt.Sprintf("otp_challenge:%s", id.String())
 }
 
 func (
@@ -124,7 +67,7 @@ func (
 		)
 	}
 
-	if challenge.ID == "" {
+	if challenge.ID == uuid.Nil {
 		return appErrors.New(
 			appErrors.KindInvalidInput,
 			"challenge id cannot be empty",
@@ -187,15 +130,72 @@ func (
 	return nil
 }
 
+// GetChallenge یک چالش OTP را با ID آن دریافت می‌کند
+func (
+	r *otpRepository,
+) GetChallenge(
+	ctx context.Context,
+	challengeID uuid.UUID,
+) (
+	*model.OTPChallenge,
+	error,
+) {
+
+	// اعتبارسنجی ورودی
+	if challengeID == uuid.Nil {
+		return nil, appErrors.New(
+			appErrors.KindInvalidInput,
+			"challenge id cannot be empty",
+		)
+	}
+
+	// دریافت مقدار از ردیس
+	data, err := r.client.Get(ctx, challengeKey(challengeID)).Bytes()
+
+	if err != nil {
+
+		if stdErrors.Is(err, redis.Nil) {
+
+			return nil, appErrors.New(
+				appErrors.KindNotFound,
+				"OTP challenge not found or expired",
+			)
+
+		}
+
+		return nil, appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to get OTP challenge from Redis",
+		)
+
+	}
+
+	challenge := &model.OTPChallenge{}
+
+	if err := json.Unmarshal(data, challenge); err != nil {
+
+		return nil, appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to unmarshal OTP challenge",
+		)
+
+	}
+
+	return challenge, nil
+
+}
+
 func (
 	r *otpRepository,
 ) DeleteChallenge(
 	ctx context.Context,
-	challengeID string,
+	challengeID uuid.UUID,
 ) error {
 
 	// اعتبارسنجی ورودی
-	if challengeID == "" {
+	if challengeID == uuid.Nil {
 		return appErrors.New(
 			appErrors.KindInvalidInput,
 			"challenge id cannot be empty",

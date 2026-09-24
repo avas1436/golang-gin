@@ -2,11 +2,15 @@
 
 package model
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 // OTPChallenge اطلاعات چالش OTP در ردیس
 type OTPChallenge struct {
-	ID          string    `json:"id"`
+	ID          uuid.UUID `json:"id"`
 	UserID      string    `json:"user_id"`
 	PhoneNumber string    `json:"phone_number"`
 	Code        string    `json:"code"`

@@ -2,7 +2,11 @@
 
 package model
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type Role string
 
@@ -31,7 +35,7 @@ func (r Role) IsValid() bool {
 
 // این مدل هرگز به بیرون ارسال نمیشه و پسورد هم در آن هش شده ذخیره میشه و در دیتابیس هم همین مدل ذخیره میشه
 type User struct {
-	ID           string
+	ID           uuid.UUID
 	Email        string
 	PhoneNumber  string
 	FullName     string
@@ -47,8 +51,8 @@ func (u *User) IsAdmin() bool {
 
 // RefreshToken مدل توکن رفرش است که در دیتابیس ذخیره میشه و برای احراز هویت کاربر استفاده میشه
 type RefreshToken struct {
-	ID        string
-	UserID    string
+	ID        uuid.UUID
+	UserID    uuid.UUID
 	TokenHash string
 	ExpiresAt time.Time
 	Revoked   bool

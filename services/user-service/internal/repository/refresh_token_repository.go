@@ -10,6 +10,7 @@ import (
 	"time"
 	"user-service/internal/model"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -27,7 +28,7 @@ type RefreshTokenRepository interface {
 	)
 
 	// باطل کردن
-	Revoke(ctx context.Context, id string) error
+	Revoke(ctx context.Context, id uuid.UUID) error
 }
 
 // ساختار رپوزیتوری توکن رفرش
@@ -60,7 +61,7 @@ func (
 		)
 	}
 
-	if rt.UserID == "" {
+	if rt.UserID == uuid.Nil {
 		return appErrors.New(
 			appErrors.KindInvalidInput,
 			"user id cannot be empty",
@@ -91,8 +92,16 @@ func (
 		RETURNING id, created_at
 	`
 
-	err := r.db.QueryRow(ctx, query, rt.UserID, rt.TokenHash, rt.ExpiresAt).
-		Scan(&rt.ID, &rt.CreatedAt)
+	err := r.db.QueryRow(
+		ctx,
+		query,
+		rt.UserID,
+		rt.TokenHash,
+		rt.ExpiresAt,
+	).Scan(
+		&rt.ID,
+		&rt.CreatedAt,
+	)
 
 	if err != nil {
 		// بررسی خطای unique constraint برای token_hash
@@ -181,11 +190,11 @@ func (
 	r *refreshTokenRepository,
 ) Revoke(
 	ctx context.Context,
-	id string,
+	id uuid.UUID,
 ) error {
 
 	// اعتبارسنجی ورودی
-	if id == "" {
+	if id == uuid.Nil {
 		return appErrors.New(
 			appErrors.KindInvalidInput,
 			"token id cannot be empty",

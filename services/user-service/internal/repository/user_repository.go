@@ -9,6 +9,7 @@ import (
 	"pkg/postgres"
 	"user-service/internal/model"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -17,7 +18,7 @@ type UserRepository interface {
 	Create(ctx context.Context, u *model.User) error
 
 	GetByID(
-		ctx context.Context, id string,
+		ctx context.Context, id uuid.UUID,
 	) (
 		*model.User, error,
 	)
@@ -112,13 +113,14 @@ func (
 func (
 	r *userRepository,
 ) GetByID(
-	ctx context.Context, id string,
+	ctx context.Context,
+	id uuid.UUID,
 ) (
 	*model.User, error,
 ) {
 
 	// اعتبارسنجی ID
-	if id == "" {
+	if id == uuid.Nil {
 		return nil, appErrors.New(
 			appErrors.KindInvalidInput,
 			"user id cannot be empty",
@@ -167,7 +169,8 @@ func (
 func (
 	r *userRepository,
 ) GetByEmailOrPhone(
-	ctx context.Context, emailOrPhone string,
+	ctx context.Context,
+	emailOrPhone string,
 ) (
 	*model.User, error,
 ) {
@@ -240,6 +243,13 @@ func (
 		return appErrors.New(
 			appErrors.KindInvalidInput,
 			"user cannot be nil",
+		)
+	}
+
+	if u.ID == uuid.Nil {
+		return appErrors.New(
+			appErrors.KindInvalidInput,
+			"user id is required for update",
 		)
 	}
 
