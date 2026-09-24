@@ -37,12 +37,21 @@ func (
 }
 
 // VerifyPayment فراخوانی توسط API Gateway زمانی که کاربر از درگاه زرین‌پال بازمی‌گردد
-func (s *GRPCServer) VerifyPayment(
+func (
+	s *GRPCServer,
+) VerifyPayment(
 	ctx context.Context,
 	req *pb.VerifyPaymentRequest,
-) (*pb.VerifyPaymentResponse, error) {
+) (
+	*pb.VerifyPaymentResponse,
+	error,
+) {
 
-	payment, err := s.paymentService.VerifyPayment(ctx, req.Authority, req.Status)
+	payment, err := s.paymentService.VerifyPayment(
+		ctx,
+		req.Authority,
+		req.Status,
+	)
 	if err != nil {
 		return nil, grpcerrors.FromAppError(err, "payment-service")
 	}
