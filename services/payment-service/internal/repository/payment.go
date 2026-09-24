@@ -194,10 +194,18 @@ func (
 // بتوانند وضعیت یک پرداخت تعیین‌تکلیف‌شده را دوباره تغییر دهند.
 func (
 	r *paymentRepository,
-) Update(
+) UpdateFromPending(
 	ctx context.Context,
 	payment *model.Payment,
 ) error {
+
+	// اعتبار سنجی مقدار ورودی
+	if payment == nil {
+		return appErrors.New(
+			appErrors.KindInvalidInput,
+			"payment cannot be nil",
+		)
+	}
 
 	query := `
 		UPDATE payments
@@ -206,8 +214,9 @@ func (
 			gateway_name   = $2,
 			gateway_ref_id = $3,
 			failure_reason = $4,
-			updated_at     = $5
-		WHERE id = $6
+			metadata       = $5,
+			updated_at     = $6
+		WHERE id = $7 AND status = 'pending'
 	`
 
 	result, err := r.db.Exec(
@@ -217,6 +226,7 @@ func (
 		payment.GatewayName,
 		payment.GatewayRefID,
 		payment.FailureReason,
+		payment.Metadata,
 		payment.UpdatedAt,
 		payment.ID,
 	)
@@ -229,9 +239,9 @@ func (
 	}
 
 	if result.RowsAffected() == 0 {
-		// یا رکورد وجود ندارد، یا از قبل در یک وضعیت نهایی/غیر از
-		// pending است؛ یعنی این گذار وضعیت قبلاً اتفاق افتاده یا
-		// دیگر ممکن نیست
+
+		// یا رکورد وجود ندارد، یا از قبل در یک وضعیت غیر از pending
+		// است؛ یعنی این گذار وضعیت قبلاً اتفاق افتاده یا دیگر ممکن نیست
 		return appErrors.New(
 			appErrors.KindAlreadyExists,
 			"payment is not in a pending state",
