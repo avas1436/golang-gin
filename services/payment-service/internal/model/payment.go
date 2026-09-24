@@ -13,12 +13,13 @@ import (
 type PaymentStatus string
 
 const (
-	PaymentStatusPending   PaymentStatus = "pending"
-	PaymentStatusCompleted PaymentStatus = "completed"
-	PaymentStatusFailed    PaymentStatus = "failed"
-	PaymentStatusCanceled  PaymentStatus = "canceled"
-	PaymentStatusRefunded  PaymentStatus = "refunded"
-	PaymentStatusExpired   PaymentStatus = "expired"
+	PaymentStatusPending         PaymentStatus = "pending"
+	PaymentStatusCompleted       PaymentStatus = "completed"
+	PaymentStatusFailed          PaymentStatus = "failed"
+	PaymentStatusCanceled        PaymentStatus = "canceled"
+	PaymentStatusRefunded        PaymentStatus = "refunded"
+	PaymentStatusExpired         PaymentStatus = "expired"
+	PaymentStatusAwaitingPayment PaymentStatus = "awaiting"
 )
 
 // تعریف ارزهای ممکن برای پرداخت
@@ -48,8 +49,17 @@ type Payment struct {
 
 	Status PaymentStatus `db:"status" json:"status"`
 
-	GatewayName  *string `db:"gateway_name" json:"gateway_name,omitempty"`
+	// نام پذیرنده پرداخت
+	GatewayName *string `db:"gateway_name" json:"gateway_name,omitempty"`
+
+	// شماره پیگیری نهایی بانک (RefID)
 	GatewayRefID *string `db:"gateway_ref_id" json:"gateway_ref_id,omitempty"`
+
+	// کد Authority اولیه زرین‌پال
+	Authority *string `json:"authority,omitempty"`
+
+	// لینک پرداخت بانک
+	RedirectURL *string `json:"redirect_url,omitempty"`
 
 	FailureReason *string `db:"failure_reason" json:"failure_reason,omitempty"`
 
@@ -82,6 +92,30 @@ func NewPendingPayment(
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
+}
+
+// ثبت Authority و RedirectURL و تغییر وضعیت به در انتظار پرداخت
+func (
+	p *Payment,
+) MarkAwaitingPayment(
+	gatewayName,
+	authority,
+	redirectURL string,
+) error {
+
+	if p.Status != PaymentStatusPending {
+		return appErrors.New(
+			appErrors.KindInvalidInput,
+			"only pending payments can transition to awaiting payment",
+		)
+	}
+
+	p.GatewayName = &gatewayName
+	p.Authority = &authority
+	p.RedirectURL = &redirectURL
+	p.Status = PaymentStatusAwaitingPayment
+	p.UpdatedAt = time.Now().UTC()
+	return nil
 }
 
 // پیش از درج اولیه‌ی رکورد پرداخت صدا زده می‌شود
