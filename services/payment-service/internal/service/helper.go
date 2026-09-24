@@ -51,7 +51,7 @@ func (
 			txPaymentRepo := repository.NewPaymentRepository(tx)
 
 			if success {
-				refID := fmt.Sprintf("ref_%s", uuid.NewString())
+				refID = fmt.Sprintf("ref_%s", uuid.NewString())
 
 				// استفاده از متد مدل به جای وارد کردن دستی مقادیر
 				if err := payment.MarkCompleted(gatewayName, refID); err != nil {
