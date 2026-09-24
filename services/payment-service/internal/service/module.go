@@ -6,6 +6,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/fx"
 
+	"payment-service/config"
+	"payment-service/internal/client"
 	"payment-service/internal/repository"
 )
 
@@ -17,13 +19,17 @@ import (
 func NewPaymentService(
 	pool *pgxpool.Pool,
 	paymentRepo repository.PaymentRepository,
+	gateway client.GatewayClient,
 	publisher EventPublisher,
+	cfg *config.Config,
 ) *PaymentService {
 
 	return &PaymentService{
 		pool:        pool,
 		paymentRepo: paymentRepo,
+		gateway:     gateway,
 		publisher:   publisher,
+		cfg:         cfg,
 	}
 }
 
