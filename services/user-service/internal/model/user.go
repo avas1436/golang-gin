@@ -13,6 +13,22 @@ const (
 	RoleUnspecified Role = "unspecified"
 )
 
+func (r Role) String() string {
+	return string(r)
+}
+
+func (r Role) IsValid() bool {
+	switch r {
+
+	case RoleAdmin, RoleMember, RoleViewer, RoleUnspecified:
+		return true
+
+	default:
+		return false
+
+	}
+}
+
 // این مدل هرگز به بیرون ارسال نمیشه و پسورد هم در آن هش شده ذخیره میشه و در دیتابیس هم همین مدل ذخیره میشه
 type User struct {
 	ID           string
@@ -25,6 +41,10 @@ type User struct {
 	UpdatedAt    time.Time
 }
 
+func (u *User) IsAdmin() bool {
+	return u.Role == RoleAdmin
+}
+
 // RefreshToken مدل توکن رفرش است که در دیتابیس ذخیره میشه و برای احراز هویت کاربر استفاده میشه
 type RefreshToken struct {
 	ID        string
@@ -33,4 +53,9 @@ type RefreshToken struct {
 	ExpiresAt time.Time
 	Revoked   bool
 	CreatedAt time.Time
+}
+
+// IsValid بررسی می‌کند که آیا توکن فعال و معتبر است یا خیر
+func (rt *RefreshToken) IsValid() bool {
+	return !rt.Revoked && time.Now().Before(rt.ExpiresAt)
 }
