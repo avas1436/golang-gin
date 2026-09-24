@@ -30,6 +30,22 @@ func NewConsumerProvider(conn *Connection) (*Consumer, error) {
 	return NewConsumer(ch)
 }
 
+// NewPublisherProvider یک کانال جدید باز کرده و Publisher را ایجاد می‌کند
+func NewPublisherProvider(
+	conn *Connection,
+) (
+	*Publisher,
+	error,
+) {
+
+	ch, err := conn.Channel()
+	if err != nil {
+		return nil, err
+	}
+
+	return NewPublisher(ch, "payment_events")
+}
+
 // RegisterLifecycle مسئول shutdown کردن Connection است.
 func RegisterLifecycle(
 	lc fx.Lifecycle,
@@ -53,6 +69,7 @@ var Module = fx.Module(
 	fx.Provide(
 		NewConnection,
 		NewConsumerProvider,
+		NewPublisherProvider,
 	),
 
 	fx.Invoke(
