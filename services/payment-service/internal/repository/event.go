@@ -1,0 +1,96 @@
+// services/payment-service/internal/repository/event.go
+
+package repository
+
+import (
+	"context"
+
+	appErrors "pkg/errors"
+	"pkg/postgres"
+
+	"github.com/google/uuid"
+)
+
+// EventRepository جدول processed_events را مدیریت می‌کند: تنها
+// مسیولیتش این است که به مصرف‌کننده‌ی رویداد (اینجا: order.created)
+// بگوید آیا این event قبلاً پردازش شده یا نه. الگوی Inbox دقیقاً
+// همانند order-service و product-service پیاده‌سازی شده تا در صورت
+// redelivery پیام توسط RabbitMQ، پرداخت تکراری برای یک سفارش ساخته
+// نشود
+type EventRepository interface {
+
+	// MarkProcessed سعی می‌کند event را به‌عنوان پردازش‌شده ثبت
+	// کند. اگر قبلاً ثبت شده باشد، alreadyProcessed برابر true
+	// برمی‌گردد و caller باید منطق پردازش را کاملاً رد کند
+	MarkProcessed(
+		ctx context.Context,
+		eventID uuid.UUID,
+		eventType string,
+		orderID *uuid.UUID,
+		paymentID *uuid.UUID,
+	) (
+		alreadyProcessed bool,
+		err error,
+	)
+}
+
+type eventRepository struct {
+	db postgres.DBTX
+}
+
+func NewEventRepository(db postgres.DBTX) EventRepository {
+	return &eventRepository{db: db}
+}
+
+// MarkProcessed با یک INSERT ... ON CONFLICT DO NOTHING پیاده‌سازی
+// شده، نه با یک SELECT جدا قبل از INSERT؛ چون RabbitMQ می‌تواند یک
+// پیام را به دو تلاش هم‌زمان تحویل بدهد (مثلاً یک بار قبل از ACK و
+// یک بار بعد از crash قبل از ACK رسیدن). یک INSERT اتمیک روی
+// Primary Key تضمین می‌کند فقط یکی از این تلاش‌ها موفق می‌شود
+func (
+	r *eventRepository,
+) MarkProcessed(
+	ctx context.Context,
+	eventID uuid.UUID,
+	eventType string,
+	orderID *uuid.UUID,
+	paymentID *uuid.UUID,
+) (
+	bool, error,
+) {
+
+	query := `
+		INSERT INTO processed_events (
+			event_id,
+			event_type,
+			order_id,
+			payment_id,
+			aggregate_type
+		)
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (event_id) DO NOTHING
+	`
+
+	result, err := r.db.Exec(
+		ctx,
+		query,
+		eventID,
+		eventType,
+		orderID,
+		paymentID,
+		"order",
+	)
+	if err != nil {
+		return false, appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to record processed event",
+		)
+	}
+
+	// اگر هیچ ردیفی درج نشد، یعنی event_id از قبل وجود داشته —
+	// این event قبلاً پردازش شده است
+	alreadyProcessed := result.RowsAffected() == 0
+
+	return alreadyProcessed, nil
+}

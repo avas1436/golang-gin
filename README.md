@@ -87,7 +87,7 @@
 - [x] User Service implementation with JWT
 - [x] Product Service implementation
 - [x] Order Service implementation with Saga pattern
-- [ ] RabbitMQ integration for asynchronous communication
+- [x] Payment Service implementation
 - [ ] API Gateway implementation
 - [ ] CI/CD pipeline setup
 

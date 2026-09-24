@@ -1,0 +1,57 @@
+// pkg/proto/payment/payment.proto
+
+syntax = "proto3";
+
+package payment;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+option go_package = "pkg/proto/payment";
+
+// --- Payment ---
+message Payment {
+  string id = 1;
+  string order_id = 2;
+  string user_id = 3;
+  string currency = 4;
+  int64 amount = 5;
+  string status = 6;
+  string gateway_name = 7;
+  string gateway_ref_id = 8;
+  string failure_reason = 9;
+  google.protobuf.Struct metadata = 10;
+  google.protobuf.Timestamp created_at = 11;
+  google.protobuf.Timestamp updated_at = 12;
+}
+
+// --- Get Payment By Order ID ---
+// این تنها متد gRPC این سرویس است و صرفاً برای دیباگ/ادمین وجود
+// دارد؛ طبق معماری Saga، Order Service نتیجه‌ی پرداخت را از
+// طریق
+// رویدادهای payment.completed/payment.failed می‌گیرد نه با
+// فراخوانی sync این متد، و کلاینت نهایی هم باید وضعیت سفارش را از Order Service
+// بپرسد، نه مستقیم از Payment Service
+message GetPaymentByOrderIDRequest {
+  string order_id = 1;
+}
+
+// --- Verify Payment ---
+message VerifyPaymentRequest {
+  string authority = 1;
+  string status = 2;
+}
+
+message VerifyPaymentResponse {
+  string order_id = 1;
+  string status = 2;
+  string ref_id = 3;
+}
+
+service PaymentService {
+  // دریافت اطلاعات پرداخت (نیازمند احراز هویت)
+  rpc GetPaymentByOrderID(GetPaymentByOrderIDRequest) returns (Payment);
+
+  // تایید و استعلام پرداخت از درگاه زرین‌پال (فراخوانی توسط API Gateway در
+  // کالبک عمومی)
+  rpc VerifyPayment(VerifyPaymentRequest) returns (VerifyPaymentResponse);
+}

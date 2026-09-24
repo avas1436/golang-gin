@@ -3,7 +3,6 @@
 
 # فایل‌هایی که نباید در آمار زبان محسوب شوند
 Makefile linguist-vendored
-*.md linguist-vendored
 *.sql linguist-vendored
 *.yml linguist-vendored
 *.yaml linguist-vendored
@@ -14,7 +13,6 @@ go.work linguist-vendored
 pkg/** linguist-vendored
 api/** linguist-vendored
 deploy/** linguist-vendored
-docs/** linguist-vendored
 scripts/** linguist-vendored
 
 # سرویس‌ها را به عنوان کد اصلی در نظر بگیر
