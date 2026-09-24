@@ -132,13 +132,14 @@ func (
 	`
 
 	u := &model.User{}
+	var roleStr string
 
 	err := r.db.QueryRow(ctx, query, id).Scan(
 		&u.ID,
 		&u.Email,
 		&u.PhoneNumber,
 		&u.FullName,
-		&u.Role,
+		&roleStr,
 		&u.CreatedAt,
 	)
 
@@ -156,6 +157,8 @@ func (
 			"failed to get user by id",
 		)
 	}
+
+	u.Role = model.Role(roleStr)
 
 	return u, nil
 }
@@ -192,12 +195,14 @@ func (
 	`
 
 	u := &model.User{}
+	var roleStr string
+
 	err := r.db.QueryRow(ctx, query, emailOrPhone).Scan(
 		&u.ID,
 		&u.Email,
 		&u.PhoneNumber,
 		&u.FullName,
-		&u.Role,
+		&roleStr,
 		&u.PasswordHash,
 		&u.CreatedAt,
 		&u.UpdatedAt,
@@ -217,6 +222,8 @@ func (
 			"failed to get user by email or phone",
 		)
 	}
+
+	u.Role = model.Role(roleStr)
 
 	return u, nil
 }
@@ -252,7 +259,7 @@ func (
 		u.Email,
 		u.PhoneNumber,
 		u.FullName,
-		u.Role,
+		u.Role.String(),
 		u.ID,
 	)
 

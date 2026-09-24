@@ -16,6 +16,6 @@ type OTPChallenge struct {
 // IsExpired بررسی انقضای کد OTP
 func (o *OTPChallenge) IsExpired() bool {
 
-	return time.Now().After(o.ExpiresAt)
+	return time.Now().UTC().After(o.ExpiresAt)
 
 }

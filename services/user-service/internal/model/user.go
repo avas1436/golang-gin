@@ -59,3 +59,8 @@ type RefreshToken struct {
 func (rt *RefreshToken) IsValid() bool {
 	return !rt.Revoked && time.Now().Before(rt.ExpiresAt)
 }
+
+// Revoke ابطال دستی توکن
+func (rt *RefreshToken) Revoke() {
+	rt.Revoked = true
+}
