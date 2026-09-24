@@ -87,6 +87,11 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
+	paymentCallbackURL, err := env.Require("PAYMENT_CALLBACK_URL")
+	if err != nil {
+		return nil, err
+	}
+
 	cfg := &Config{
 		GRPCPort: env.String("GRPC_PORT", "50054"),
 
@@ -122,8 +127,9 @@ func Load() (*Config, error) {
 		},
 
 		ZarinPal: commonConfig.ZarinpalConfig{
-			MerchantID: merchantID,
-			IsSandbox:  isSandbox,
+			MerchantID:         merchantID,
+			IsSandbox:          isSandbox,
+			PaymentCallbackURL: paymentCallbackURL,
 		},
 	}
 

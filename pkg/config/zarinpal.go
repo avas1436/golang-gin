@@ -3,6 +3,7 @@
 package config
 
 type ZarinpalConfig struct {
-	MerchantID string
-	IsSandbox  bool
+	MerchantID         string
+	IsSandbox          bool
+	PaymentCallbackURL string
 }
