@@ -87,7 +87,7 @@ func (
 		)
 	}
 
-	if challenge.UserID == "" {
+	if challenge.UserID == uuid.Nil {
 		return appErrors.New(
 			appErrors.KindInvalidInput,
 			"user id cannot be empty",

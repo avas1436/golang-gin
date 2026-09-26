@@ -11,7 +11,7 @@ import (
 // OTPChallenge اطلاعات چالش OTP در ردیس
 type OTPChallenge struct {
 	ID          uuid.UUID `json:"id"`
-	UserID      string    `json:"user_id"`
+	UserID      uuid.UUID `json:"user_id"`
 	PhoneNumber string    `json:"phone_number"`
 	Code        string    `json:"code"`
 	ExpiresAt   time.Time `json:"expires_at"`

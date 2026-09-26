@@ -5,11 +5,12 @@ package service
 import (
 	"context"
 	"log"
+	"time"
+
 	"pkg/auth"
 	appErrors "pkg/errors"
 	pb "pkg/proto/user"
-	"time"
-
+	"user-service/config"
 	"user-service/internal/model"
 	"user-service/internal/repository"
 
@@ -32,7 +33,7 @@ func NewUserService(
 	otpRepo repository.OTPRepository,
 	refreshTokenRepo repository.RefreshTokenRepository,
 	tokens auth.TokenManager,
-	refreshTokenTTL time.Duration,
+	cfg *config.Config,
 ) *UserService {
 
 	return &UserService{
@@ -40,8 +41,9 @@ func NewUserService(
 		otpRepo:          otpRepo,
 		refreshTokenRepo: refreshTokenRepo,
 		tokens:           tokens,
-		refreshTokenTTL:  refreshTokenTTL,
+		refreshTokenTTL:  cfg.JWT.RefreshTokenTTL,
 	}
+
 }
 
 func (
@@ -59,7 +61,7 @@ func (
 	// start := time.Now()
 
 	accessToken, err := s.tokens.GenerateAccessToken(
-		user.ID,
+		user.ID.String(),
 		string(user.Role),
 	)
 	if err != nil {
@@ -108,6 +110,13 @@ func (
 		return nil, appErrors.New(
 			appErrors.KindInvalidInput,
 			"register request is nil",
+		)
+	}
+
+	if req.Email == "" || req.PhoneNumber == "" || req.Password == "" {
+		return nil, appErrors.New(
+			appErrors.KindInvalidInput,
+			"email, phone number, and password are required",
 		)
 	}
 
@@ -200,11 +209,7 @@ func (
 		}
 
 		// خطاهای داخلی
-		return nil, appErrors.Wrap(
-			appErrors.KindInternal,
-			err,
-			"failed to get user by phone number or email",
-		)
+		return nil, err
 	}
 
 	// log.Printf("GetUser: %s", time.Since(start))
@@ -227,11 +232,7 @@ func (
 		}
 
 		// خطاهای داخلی در مقایسه رمز
-		return nil, appErrors.Wrap(
-			appErrors.KindInternal,
-			err,
-			"failed to compare password",
-		)
+		return nil, err
 	}
 
 	// log.Printf("ComparePassword: %s", time.Since(start))
@@ -293,11 +294,7 @@ func (
 		}
 
 		// خطاهای داخلی
-		return nil, appErrors.Wrap(
-			appErrors.KindInternal,
-			err,
-			"failed to get user by phone number",
-		)
+		return nil, err
 	}
 
 	// تولید OTP
@@ -307,10 +304,11 @@ func (
 	}
 
 	challenge := &model.OTPChallenge{
-		ID:          uuid.NewString(),
+		ID:          uuid.New(),
 		UserID:      user.ID,
 		PhoneNumber: user.PhoneNumber,
 		Code:        code,
+		ExpiresAt:   time.Now().UTC().Add(otpTTL),
 	}
 
 	if err := s.otpRepo.SaveChallenge(
@@ -326,7 +324,7 @@ func (
 	log.Printf("user OTP Code is :%s", code)
 
 	return &pb.OTPLoginResponse{
-		ChallengeId:      challenge.ID,
+		ChallengeId:      challenge.ID.String(),
 		ExpiresInSeconds: int32(otpTTL.Seconds()),
 	}, nil
 }
@@ -342,7 +340,24 @@ func (
 	error,
 ) {
 
-	challenge, err := s.otpRepo.GetChallenge(ctx, req.OtpChallengeId)
+	// اعتبار سنجی داده ورودی
+	if req == nil || req.OtpChallengeId == "" || req.OtpCode == "" {
+		return nil, appErrors.New(
+			appErrors.KindInvalidInput,
+			"challenge id and code are required",
+		)
+	}
+
+	// تبدیل رشته آیدی به فرمت uuid
+	challengeID, err := uuid.Parse(req.OtpChallengeId)
+	if err != nil {
+		return nil, appErrors.New(
+			appErrors.KindInvalidInput,
+			"invalid challenge id format",
+		)
+	}
+
+	challenge, err := s.otpRepo.GetChallenge(ctx, challengeID)
 	if err != nil {
 
 		return nil, err
@@ -357,7 +372,7 @@ func (
 
 	}
 
-	if err := s.otpRepo.DeleteChallenge(ctx, req.OtpChallengeId); err != nil {
+	if err := s.otpRepo.DeleteChallenge(ctx, challengeID); err != nil {
 		return nil, err
 	}
 
@@ -391,6 +406,14 @@ func (
 	error,
 ) {
 
+	// اعتبار سنجی
+	if req == nil || req.RefreshToken == "" {
+		return nil, appErrors.New(
+			appErrors.KindInvalidInput,
+			"refresh token is required",
+		)
+	}
+
 	tokenHash := s.tokens.HashRefreshToken(req.RefreshToken)
 
 	rt, err := s.refreshTokenRepo.GetByTokenHash(ctx, tokenHash)
@@ -406,13 +429,12 @@ func (
 		return nil, err
 	}
 
-	if rt.Revoked || time.Now().After(rt.ExpiresAt) {
-
+	// استفاده از متد ساختار رفرش توکن برای اعتبار سنجی آن
+	if !rt.IsValid() {
 		return nil, appErrors.New(
-			appErrors.KindNotFound,
-			"refresh token is invalid, expired, or already used",
+			appErrors.KindUnauthenticated,
+			"refresh token is invalid, expired, or revoked",
 		)
-
 	}
 
 	user, err := s.userRepo.GetByID(ctx, rt.UserID)
@@ -449,10 +471,18 @@ func (
 	error,
 ) {
 
-	if req == nil {
+	if req == nil || req.Id == "" {
 		return nil, appErrors.New(
 			appErrors.KindInvalidInput,
-			"get user request is nil",
+			"user id is required",
+		)
+	}
+
+	targetUserID, err := uuid.Parse(req.Id)
+	if err != nil {
+		return nil, appErrors.New(
+			appErrors.KindInvalidInput,
+			"invalid user id format",
 		)
 	}
 
@@ -474,7 +504,7 @@ func (
 		)
 	}
 
-	user, err := s.userRepo.GetByID(ctx, req.Id)
+	user, err := s.userRepo.GetByID(ctx, targetUserID)
 	if err != nil {
 
 		return nil, err
@@ -494,6 +524,10 @@ func (
 	*pb.LogoutResponse,
 	error,
 ) {
+
+	if req == nil || req.RefreshToken == "" {
+		return &pb.LogoutResponse{}, nil
+	}
 
 	tokenHash := s.tokens.HashRefreshToken(req.RefreshToken)
 
