@@ -23,6 +23,8 @@ type UserService struct {
 	otpRepo          repository.OTPRepository
 	refreshTokenRepo repository.RefreshTokenRepository
 
+	eventPublisher EventPublisher
+
 	tokens          auth.TokenManager
 	refreshTokenTTL time.Duration
 }
@@ -301,7 +303,18 @@ func (
 		return nil, err
 	}
 
-	// TODO(notification): اینجا باید کد OTP واقعاً برای کاربر پیامک شود.
+	// انتشار رویداد ارسال کد OTP به RabbitMQ
+	if err := s.eventPublisher.PublishUserOTPRequested(
+		ctx,
+		user.ID,
+		user.PhoneNumber,
+		code,
+	); err != nil {
+		// لاگ خطا جهت مانیتورینگ؛ همچنین بسته به نیاز پروژه می‌توانید خطا را Wrap کرده و برگردانید
+		log.Printf("user-service: failed to publish OTP requested event: %v", err)
+	}
+
+	// فعلا برای دیباگ این قسمت میمونه
 	log.Printf("user OTP Code is :%s", code)
 
 	return &pb.OTPLoginResponse{

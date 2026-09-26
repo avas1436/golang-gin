@@ -14,6 +14,7 @@ func NewUserService(
 	userRepo repository.UserRepository,
 	otpRepo repository.OTPRepository,
 	refreshTokenRepo repository.RefreshTokenRepository,
+	eventPublisher EventPublisher,
 	tokens auth.TokenManager,
 	cfg *config.Config,
 ) *UserService {
@@ -22,6 +23,7 @@ func NewUserService(
 		userRepo:         userRepo,
 		otpRepo:          otpRepo,
 		refreshTokenRepo: refreshTokenRepo,
+		eventPublisher:   eventPublisher,
 		tokens:           tokens,
 		refreshTokenTTL:  cfg.JWT.RefreshTokenTTL,
 	}
