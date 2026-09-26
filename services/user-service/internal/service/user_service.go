@@ -10,7 +10,6 @@ import (
 	"pkg/auth"
 	appErrors "pkg/errors"
 	pb "pkg/proto/user"
-	"user-service/config"
 	"user-service/internal/model"
 	"user-service/internal/repository"
 
@@ -26,24 +25,6 @@ type UserService struct {
 
 	tokens          auth.TokenManager
 	refreshTokenTTL time.Duration
-}
-
-func NewUserService(
-	userRepo repository.UserRepository,
-	otpRepo repository.OTPRepository,
-	refreshTokenRepo repository.RefreshTokenRepository,
-	tokens auth.TokenManager,
-	cfg *config.Config,
-) *UserService {
-
-	return &UserService{
-		userRepo:         userRepo,
-		otpRepo:          otpRepo,
-		refreshTokenRepo: refreshTokenRepo,
-		tokens:           tokens,
-		refreshTokenTTL:  cfg.JWT.RefreshTokenTTL,
-	}
-
 }
 
 func (

@@ -2,7 +2,31 @@
 
 package service
 
-import "go.uber.org/fx"
+import (
+	"pkg/auth"
+	"user-service/config"
+	"user-service/internal/repository"
+
+	"go.uber.org/fx"
+)
+
+func NewUserService(
+	userRepo repository.UserRepository,
+	otpRepo repository.OTPRepository,
+	refreshTokenRepo repository.RefreshTokenRepository,
+	tokens auth.TokenManager,
+	cfg *config.Config,
+) *UserService {
+
+	return &UserService{
+		userRepo:         userRepo,
+		otpRepo:          otpRepo,
+		refreshTokenRepo: refreshTokenRepo,
+		tokens:           tokens,
+		refreshTokenTTL:  cfg.JWT.RefreshTokenTTL,
+	}
+
+}
 
 // Module ارائه دهنده‌ی لایه Service به سیستم تزریق وابستگی Fx
 var Module = fx.Module(
