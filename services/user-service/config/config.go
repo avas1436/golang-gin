@@ -24,6 +24,9 @@ type Config struct {
 // در صورت نبود کانفیگیوریشن های fail-fast برنامه درجا بسته میشود
 func Load() (*Config, error) {
 
+	// لود کردن فایل متغیر های محیطی در محیط پردازش برنامه
+	env.Load(".env")
+
 	// متغیرهای اجباری (Fail-Fast)
 	dbPassword, err := env.Require("DB_PASSWORD")
 	if err != nil {
