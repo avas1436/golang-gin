@@ -25,7 +25,7 @@ func NewUserService(
 		refreshTokenRepo: refreshTokenRepo,
 		eventPublisher:   eventPublisher,
 		tokens:           tokens,
-		refreshTokenTTL:  cfg.JWT.RefreshTokenTTL,
+		refreshTokenTTL:  cfg.RefreshToken.TTL,
 	}
 
 }
