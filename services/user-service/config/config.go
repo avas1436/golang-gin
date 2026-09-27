@@ -13,64 +13,62 @@ import (
 type Config struct {
 	GRPCPort string
 
-	Postgres commonConfig.PostgresConfig
-	Redis    commonConfig.RedisConfig
-	JWT      JWTConfig
-}
-
-type JWTConfig struct {
-	Secret          string
-	AccessTokenTTL  time.Duration
-	RefreshTokenTTL time.Duration
+	Postgres     commonConfig.PostgresConfig
+	Redis        commonConfig.RedisConfig
+	RabbitMQ     commonConfig.RabbitMQConfig
+	JWT          commonConfig.JWTConfig
+	RefreshToken commonConfig.RefreshTokenConfig
 }
 
 // Load مقادیر را از متغیرهای محیطی می‌خواند.
 // در صورت نبود کانفیگیوریشن های fail-fast برنامه درجا بسته میشود
 func Load() (*Config, error) {
 
-	// fail-fast
+	// لود کردن فایل متغیر های محیطی در محیط پردازش برنامه
+	env.Load(".env")
+
+	// متغیرهای اجباری (Fail-Fast)
 	dbPassword, err := env.Require("DB_PASSWORD")
 	if err != nil {
 		return nil, err
 	}
 
-	// fail-fast
 	jwtSecret, err := env.Require("JWT_SECRET")
 	if err != nil {
 		return nil, err
 	}
 
-	// این هم مهمه ولی مقدار پیش فرض داره
+	rabbitmqPassword, err := env.Require("RABBITMQ_PASSWORD")
+	if err != nil {
+		return nil, err
+	}
+
+	// متغیرهای دارای مقدار پیش‌فرض
 	accessTTL, err := env.Duration("JWT_ACCESS_TTL", 15*time.Minute)
 	if err != nil {
 		return nil, err
 	}
 
-	// این هم مهمه ولی مقدار پیش فرض داره
 	refreshTTL, err := env.Duration("JWT_REFRESH_TTL", 7*24*time.Hour)
 	if err != nil {
 		return nil, err
 	}
 
-	// این هم مهمه ولی مقدار پیش فرض داره
 	redisDB, err := env.Int("REDIS_DB", 0)
 	if err != nil {
 		return nil, err
 	}
 
-	// این هم مهمه ولی مقدار پیش فرض داره
 	redisPoolSize, err := env.Int("REDIS_POOL_SIZE", 10)
 	if err != nil {
 		return nil, err
 	}
 
-	// این هم مهمه ولی مقدار پیش فرض داره
 	redisMinIdleConns, err := env.Int("REDIS_MIN_IDLE_CONNS", 2)
 	if err != nil {
 		return nil, err
 	}
 
-	// این هم مهمه ولی مقدار پیش فرض داره
 	redisConnMaxIdle, err := env.Duration(
 		"REDIS_CONN_MAX_IDLE",
 		5*time.Minute,
@@ -79,7 +77,6 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
-	// در اینجا مقادیر وارد کانفیگ میشه
 	cfg := &Config{
 		GRPCPort: env.String("GRPC_PORT", "50051"),
 
@@ -101,10 +98,21 @@ func Load() (*Config, error) {
 			ConnMaxIdle:  redisConnMaxIdle,
 		},
 
-		JWT: JWTConfig{
-			Secret:          jwtSecret,
-			AccessTokenTTL:  accessTTL,
-			RefreshTokenTTL: refreshTTL,
+		RabbitMQ: commonConfig.RabbitMQConfig{
+			Host:     env.String("RABBITMQ_HOST", "localhost"),
+			Port:     env.String("RABBITMQ_PORT", "5672"),
+			User:     env.String("RABBITMQ_USER", "guest"),
+			Password: rabbitmqPassword,
+			VHost:    env.String("RABBITMQ_VHOST", "/"),
+		},
+
+		JWT: commonConfig.JWTConfig{
+			Secret:         jwtSecret,
+			AccessTokenTTL: accessTTL,
+		},
+
+		RefreshToken: commonConfig.RefreshTokenConfig{
+			TTL: refreshTTL,
 		},
 	}
 

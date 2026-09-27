@@ -6,11 +6,12 @@ import (
 	"context"
 	"encoding/json"
 	stdErrors "errors"
-	"fmt"
+	"pkg/cache"
 	appErrors "pkg/errors"
 	"time"
 	"user-service/internal/model"
 
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -23,7 +24,7 @@ type OTPRepository interface {
 
 	GetChallenge(
 		ctx context.Context,
-		challengeID string,
+		challengeID uuid.UUID,
 	) (
 		*model.OTPChallenge,
 		error,
@@ -31,25 +32,108 @@ type OTPRepository interface {
 
 	DeleteChallenge(
 		ctx context.Context,
-		challengeID string,
+		challengeID uuid.UUID,
 	) error
 }
 
 type otpRepository struct {
-	client *redis.Client
+	client     *redis.Client
+	keyBuilder cache.KeyBuilder
 }
 
 func NewOTPRepository(client *redis.Client) OTPRepository {
 
-	return &otpRepository{client: client}
+	return &otpRepository{
+		client:     client,
+		keyBuilder: cache.NewKeyBuilder("user-service"),
+	}
 
 }
 
-// challengeKey کلید Redis برای ذخیره چالش OTP
-func challengeKey(id string) string {
+// کلید Redis برای ذخیره چالش OTP
+func (r *otpRepository) key(id uuid.UUID) string {
 
-	return fmt.Sprintf("otp_challenge:%s", id)
+	return r.keyBuilder.Build("otp", id.String())
 
+}
+
+func (
+	r *otpRepository,
+) SaveChallenge(
+	ctx context.Context,
+	challenge *model.OTPChallenge,
+	ttl time.Duration,
+) error {
+
+	// اعتبارسنجی ورودی‌ها
+	if challenge == nil {
+		return appErrors.New(
+			appErrors.KindInvalidInput,
+			"challenge cannot be nil",
+		)
+	}
+
+	if challenge.ID == uuid.Nil {
+		return appErrors.New(
+			appErrors.KindInvalidInput,
+			"challenge id cannot be empty",
+		)
+	}
+
+	if challenge.PhoneNumber == "" {
+		return appErrors.New(
+			appErrors.KindInvalidInput,
+			"phone number cannot be empty",
+		)
+	}
+
+	if challenge.UserID == uuid.Nil {
+		return appErrors.New(
+			appErrors.KindInvalidInput,
+			"user id cannot be empty",
+		)
+	}
+
+	if challenge.Code == "" {
+		return appErrors.New(
+			appErrors.KindInvalidInput,
+			"otp code cannot be empty",
+		)
+	}
+
+	if ttl <= 0 {
+		return appErrors.New(
+			appErrors.KindInvalidInput,
+			"TTL must be greater than zero",
+		)
+	}
+
+	// مارشال کردن داده
+	data, err := json.Marshal(challenge)
+	if err != nil {
+		return appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to marshal OTP challenge",
+		)
+	}
+
+	// ذخیره در ردیس
+	if err := r.client.Set(
+		ctx,
+		r.key(challenge.ID),
+		data,
+		ttl,
+	).Err(); err != nil {
+
+		return appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to save OTP challenge in Redis",
+		)
+	}
+
+	return nil
 }
 
 // GetChallenge یک چالش OTP را با ID آن دریافت می‌کند
@@ -57,21 +141,22 @@ func (
 	r *otpRepository,
 ) GetChallenge(
 	ctx context.Context,
-	challengeID string,
+	challengeID uuid.UUID,
 ) (
 	*model.OTPChallenge,
 	error,
 ) {
 
 	// اعتبارسنجی ورودی
-	if challengeID == "" {
+	if challengeID == uuid.Nil {
 		return nil, appErrors.New(
 			appErrors.KindInvalidInput,
 			"challenge id cannot be empty",
 		)
 	}
 
-	data, err := r.client.Get(ctx, challengeKey(challengeID)).Bytes()
+	// دریافت مقدار از ردیس
+	data, err := r.client.Get(ctx, r.key(challengeID)).Bytes()
 
 	if err != nil {
 
@@ -110,92 +195,13 @@ func (
 
 func (
 	r *otpRepository,
-) SaveChallenge(
-	ctx context.Context,
-	challenge *model.OTPChallenge,
-	ttl time.Duration,
-) error {
-
-	// اعتبارسنجی ورودی‌ها
-	if challenge == nil {
-		return appErrors.New(
-			appErrors.KindInvalidInput,
-			"challenge cannot be nil",
-		)
-	}
-
-	if challenge.ID == "" {
-		return appErrors.New(
-			appErrors.KindInvalidInput,
-			"challenge id cannot be empty",
-		)
-	}
-
-	if challenge.PhoneNumber == "" {
-		return appErrors.New(
-			appErrors.KindInvalidInput,
-			"phone number cannot be empty",
-		)
-	}
-
-	if challenge.UserID == "" {
-		return appErrors.New(
-			appErrors.KindInvalidInput,
-			"user id cannot be empty",
-		)
-	}
-
-	if challenge.Code == "" {
-		return appErrors.New(
-			appErrors.KindInvalidInput,
-			"otp code cannot be empty",
-		)
-	}
-
-	if ttl <= 0 {
-		return appErrors.New(
-			appErrors.KindInvalidInput,
-			"TTL must be greater than zero",
-		)
-	}
-
-	// مارشال کردن داده
-	data, err := json.Marshal(challenge)
-	if err != nil {
-		return appErrors.Wrap(
-			appErrors.KindInternal,
-			err,
-			"failed to marshal OTP challenge",
-		)
-	}
-
-	// ذخیره در ردیس
-	if err := r.client.Set(
-		ctx,
-		challengeKey(challenge.ID),
-		data,
-		ttl,
-	).Err(); err != nil {
-
-		return appErrors.Wrap(
-			appErrors.KindInternal,
-			err,
-			"failed to save OTP challenge in Redis",
-		)
-	}
-
-	return nil
-}
-
-func (
-	r *otpRepository,
 ) DeleteChallenge(
 	ctx context.Context,
-	challengeID string,
+	challengeID uuid.UUID,
 ) error {
 
 	// اعتبارسنجی ورودی
-	if challengeID == "" {
+	if challengeID == uuid.Nil {
 		return appErrors.New(
 			appErrors.KindInvalidInput,
 			"challenge id cannot be empty",
@@ -213,7 +219,7 @@ func (
 	}
 
 	// حذف چالش
-	if err := r.client.Del(ctx, challengeKey(challengeID)).Err(); err != nil {
+	if err := r.client.Del(ctx, r.key(challengeID)).Err(); err != nil {
 
 		return appErrors.Wrap(
 			appErrors.KindInternal,

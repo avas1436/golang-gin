@@ -9,6 +9,7 @@ import (
 	"pkg/postgres"
 	"user-service/internal/model"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -17,7 +18,7 @@ type UserRepository interface {
 	Create(ctx context.Context, u *model.User) error
 
 	GetByID(
-		ctx context.Context, id string,
+		ctx context.Context, id uuid.UUID,
 	) (
 		*model.User, error,
 	)
@@ -112,13 +113,14 @@ func (
 func (
 	r *userRepository,
 ) GetByID(
-	ctx context.Context, id string,
+	ctx context.Context,
+	id uuid.UUID,
 ) (
 	*model.User, error,
 ) {
 
 	// اعتبارسنجی ID
-	if id == "" {
+	if id == uuid.Nil {
 		return nil, appErrors.New(
 			appErrors.KindInvalidInput,
 			"user id cannot be empty",
@@ -132,13 +134,14 @@ func (
 	`
 
 	u := &model.User{}
+	var roleStr string
 
 	err := r.db.QueryRow(ctx, query, id).Scan(
 		&u.ID,
 		&u.Email,
 		&u.PhoneNumber,
 		&u.FullName,
-		&u.Role,
+		&roleStr,
 		&u.CreatedAt,
 	)
 
@@ -157,6 +160,8 @@ func (
 		)
 	}
 
+	u.Role = model.Role(roleStr)
+
 	return u, nil
 }
 
@@ -164,7 +169,8 @@ func (
 func (
 	r *userRepository,
 ) GetByEmailOrPhone(
-	ctx context.Context, emailOrPhone string,
+	ctx context.Context,
+	emailOrPhone string,
 ) (
 	*model.User, error,
 ) {
@@ -192,12 +198,14 @@ func (
 	`
 
 	u := &model.User{}
+	var roleStr string
+
 	err := r.db.QueryRow(ctx, query, emailOrPhone).Scan(
 		&u.ID,
 		&u.Email,
 		&u.PhoneNumber,
 		&u.FullName,
-		&u.Role,
+		&roleStr,
 		&u.PasswordHash,
 		&u.CreatedAt,
 		&u.UpdatedAt,
@@ -218,6 +226,8 @@ func (
 		)
 	}
 
+	u.Role = model.Role(roleStr)
+
 	return u, nil
 }
 
@@ -233,6 +243,13 @@ func (
 		return appErrors.New(
 			appErrors.KindInvalidInput,
 			"user cannot be nil",
+		)
+	}
+
+	if u.ID == uuid.Nil {
+		return appErrors.New(
+			appErrors.KindInvalidInput,
+			"user id is required for update",
 		)
 	}
 
@@ -252,7 +269,7 @@ func (
 		u.Email,
 		u.PhoneNumber,
 		u.FullName,
-		u.Role,
+		u.Role.String(),
 		u.ID,
 	)
 
