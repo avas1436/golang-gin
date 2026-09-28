@@ -10,6 +10,7 @@ import (
 	"pkg/events"
 	"pkg/postgres"
 
+	"product-service/internal/cache"
 	"product-service/internal/repository"
 
 	"github.com/jackc/pgx/v5"
@@ -22,16 +23,20 @@ const eventTypeStockConfirm = "stock.confirm.requested"
 // می‌کند. ایدمپوتنسی اینجا از Release هم مهم‌تره چون ConfirmStock
 // هم total_stock و هم reserved_stock را واقعاً کم می‌کند
 type StockConfirmConsumer struct {
-	pool *pgxpool.Pool
+	pool         *pgxpool.Pool
+	productStore *cache.ProductCacheStore
 }
 
 func NewStockConfirmConsumer(
 	pool *pgxpool.Pool,
+	productStore *cache.ProductCacheStore,
 ) *StockConfirmConsumer {
 
 	return &StockConfirmConsumer{
-		pool: pool,
+		pool:         pool,
+		productStore: productStore,
 	}
+
 }
 
 // در این تابع هم دو فرایند در یک تراکنش انجام نمیشوند
@@ -53,7 +58,7 @@ func (
 		return nil
 	}
 
-	return postgres.WithTx(
+	err := postgres.WithTx(
 		ctx,
 		h.pool,
 		func(tx pgx.Tx) error {
@@ -67,6 +72,7 @@ func (
 				event.EventID,
 				eventTypeStockConfirm,
 				event.ProductID,
+				event.OrderID,
 			)
 
 			// اگر خطا داد
@@ -105,8 +111,25 @@ func (
 
 				return err
 			}
-
 			return nil
 		},
 	)
+
+	if err != nil {
+		return err
+	}
+
+	// ابطال کش به‌صورت یکپارچه پس از COMMIT تراکنش
+	if err := h.productStore.InvalidateProduct(
+		ctx,
+		event.ProductID,
+	); err != nil {
+
+		log.Printf("product-service: failed to invalidate cache for product %s: %v",
+			event.ProductID,
+			err,
+		)
+	}
+
+	return nil
 }

@@ -18,7 +18,7 @@ type EventRepository interface {
 		eventID uuid.UUID,
 		eventType string,
 		productID uuid.UUID,
-		orderID *uuid.UUID,
+		orderID uuid.UUID,
 	) (
 		alreadyProcessed bool,
 		err error,
@@ -38,7 +38,7 @@ func (r *eventRepository) MarkProcessed(
 	eventID uuid.UUID,
 	eventType string,
 	productID uuid.UUID,
-	orderID *uuid.UUID,
+	orderID uuid.UUID,
 ) (
 	bool, error,
 ) {
