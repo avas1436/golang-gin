@@ -2,7 +2,21 @@
 
 package service
 
-import "go.uber.org/fx"
+import (
+	"product-service/internal/repository"
+
+	"go.uber.org/fx"
+)
+
+// سازنده یک ساختار سرویس محصول
+func NewProductService(
+	productRepo repository.ProductRepository,
+) *ProductService {
+
+	return &ProductService{
+		productRepo: productRepo,
+	}
+}
 
 var Module = fx.Module(
 	"service",

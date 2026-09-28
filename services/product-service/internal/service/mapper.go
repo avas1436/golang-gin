@@ -12,6 +12,11 @@ import (
 // toProtoProduct مدل داخلی را به پیام gRPC تبدیل می‌کند
 func toProtoProduct(p *model.Product) *pb.Product {
 
+	// بررسی خالی نبودن داده ورودی
+	if p == nil {
+		return nil
+	}
+
 	return &pb.Product{
 		Id:            p.ID.String(),
 		Name:          p.Name,
@@ -32,7 +37,10 @@ func toProtoProductList(products []*model.Product) []*pb.Product {
 	result := make([]*pb.Product, 0, len(products))
 
 	for _, p := range products {
-		result = append(result, toProtoProduct(p))
+		// جلوگیری از قرار گرفتن داده خالی در لیست
+		if protoProduct := toProtoProduct(p); protoProduct != nil {
+			result = append(result, protoProduct)
+		}
 	}
 
 	return result
