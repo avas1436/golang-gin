@@ -193,10 +193,16 @@ func (
 					var (
 						itemID    uuid.UUID
 						productID uuid.UUID
+						subtotal  int64
 						createdAt time.Time
 					)
 
-					if err := rows.Scan(&itemID, &productID, &createdAt); err != nil {
+					if err := rows.Scan(
+						&itemID,
+						&productID,
+						&subtotal,
+						&createdAt,
+					); err != nil {
 
 						return appErrors.Wrap(
 							appErrors.KindInternal,
@@ -215,6 +221,7 @@ func (
 					}
 
 					order.Items[idx].ID = itemID
+					order.Items[idx].Subtotal = subtotal
 					order.Items[idx].CreatedAt = createdAt
 					scanned++
 				}
@@ -312,13 +319,14 @@ func (
 ) {
 
 	query := `
-		SELECT 
-			id, 
-			order_id, 
-			product_id, 
-			product_name, 
-			unit_price, 
-			quantity, 
+		SELECT
+			id,
+			order_id,
+			product_id,
+			product_name,
+			unit_price,
+			quantity,
+			subtotal,
 			created_at
 		FROM order_items
 		WHERE order_id = $1
@@ -347,6 +355,7 @@ func (
 			&item.ProductName,
 			&item.UnitPrice,
 			&item.Quantity,
+			&item.Subtotal,
 			&item.CreatedAt,
 		); err != nil {
 			return nil, appErrors.Wrap(
@@ -382,8 +391,12 @@ func (
 	[]*model.Order, error,
 ) {
 
+	// اعتبار سنجی مقادیر ورودی
 	if limit <= 0 {
 		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
 	}
 
 	query := `
