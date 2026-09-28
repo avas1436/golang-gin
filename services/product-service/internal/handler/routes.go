@@ -18,16 +18,17 @@ func PublicMethods() map[string]bool {
 		pb.ProductService_GetProduct_FullMethodName:     true,
 		pb.ProductService_SearchProducts_FullMethodName: true,
 
-		// این سه متد را Order Service به‌صورت مستقیم (نه از طریق
+		// این چهار متد را Order Service به‌صورت مستقیم (نه از طریق
 		// API Gateway) فراخوانی می‌کند، پس هیچ‌وقت JWT کاربر نهایی
 		// همراهشان نیست. مرز امنیتی واقعی این‌ها فعلاً شبکه‌ی داخلی
 		// Docker Compose است، نه احراز هویت سطح اپلیکیشن؛ اگر روزی
 		// این سرویس‌ها خارج از یک شبکه‌ی ایزوله دیپلوی شدند، باید
 		// این‌جا یک مکانیزم auth سرویس‌به‌سرویس (مثلاً mTLS یا یک
 		// internal token جدا) اضافه شود
-		pb.ProductService_ReserveStock_FullMethodName: true,
-		pb.ProductService_ReleaseStock_FullMethodName: true,
-		pb.ProductService_ConfirmStock_FullMethodName: true,
+		pb.ProductService_GetProductsByIDs_FullMethodName: true,
+		pb.ProductService_ReserveStock_FullMethodName:     true,
+		pb.ProductService_ReleaseStock_FullMethodName:     true,
+		pb.ProductService_ConfirmStock_FullMethodName:     true,
 	}
 }
 
@@ -45,6 +46,10 @@ func RateLimitRules() map[string]grpcmiddleware.RateLimitRule {
 			Limit: ratelimit.PerMinute(30),
 		},
 
+		pb.ProductService_DeleteProduct_FullMethodName: {
+			Limit: ratelimit.PerMinute(10),
+		},
+
 		// ترافیک عمومی مرور فروشگاه؛ محدودیت بازتر
 		pb.ProductService_GetProduct_FullMethodName: {
 			Limit: ratelimit.PerMinute(80),
@@ -54,9 +59,9 @@ func RateLimitRules() map[string]grpcmiddleware.RateLimitRule {
 			Limit: ratelimit.PerMinute(40),
 		},
 
-		// عمداً برای سه متد داخلی Reserve/Release/Confirm قانونی
+		// عمداً برای چهار متد داخلی Reserve/Release/Confirm/GetByIDs قانونی
 		// تعریف نشده: چون RateLimitInterceptor وقتی متدی در این
-		// map نباشد، بدون محدودیت رد می‌شود و این سه متد فقط توسط
+		// map نباشد، بدون محدودیت رد می‌شود و این چهار متد فقط توسط
 		// Order Service (نه کاربر نهایی) با فرکانس بالا صدا زده
 		// می‌شوند، پس Rate Limit کردنشان روی IP معنایی ندارد
 	}

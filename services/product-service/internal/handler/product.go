@@ -16,15 +16,6 @@ type GRPCServer struct {
 	productService                       *service.ProductService
 }
 
-// یک نمونه جدید از سرور gRPC را می‌سازد
-func NewGRPCServer(productService *service.ProductService) *GRPCServer {
-
-	return &GRPCServer{
-		productService: productService,
-	}
-
-}
-
 // CreateProduct
 func (
 	s *GRPCServer,
@@ -32,7 +23,8 @@ func (
 	ctx context.Context,
 	req *pb.CreateProductRequest,
 ) (
-	*pb.Product, error,
+	*pb.Product,
+	error,
 ) {
 
 	resp, err := s.productService.CreateProduct(ctx, req)
@@ -50,10 +42,30 @@ func (
 	ctx context.Context,
 	req *pb.UpdateProductRequest,
 ) (
-	*pb.Product, error,
+	*pb.Product,
+	error,
 ) {
 
 	resp, err := s.productService.UpdateProduct(ctx, req)
+	if err != nil {
+		return nil, grpcerrors.FromAppError(err, "product-service")
+	}
+
+	return resp, nil
+}
+
+// DeleteProduct
+func (
+	s *GRPCServer,
+) DeleteProduct(
+	ctx context.Context,
+	req *pb.DeleteProductRequest,
+) (
+	*pb.DeleteProductResponse,
+	error,
+) {
+
+	resp, err := s.productService.DeleteProduct(ctx, req)
 	if err != nil {
 		return nil, grpcerrors.FromAppError(err, "product-service")
 	}
@@ -68,10 +80,30 @@ func (
 	ctx context.Context,
 	req *pb.GetProductRequest,
 ) (
-	*pb.Product, error,
+	*pb.Product,
+	error,
 ) {
 
 	resp, err := s.productService.GetProduct(ctx, req)
+	if err != nil {
+		return nil, grpcerrors.FromAppError(err, "product-service")
+	}
+
+	return resp, nil
+}
+
+// GetProductsByIDs
+func (
+	s *GRPCServer,
+) GetProductsByIDs(
+	ctx context.Context,
+	req *pb.GetProductsByIDsRequest,
+) (
+	*pb.GetProductsByIDsResponse,
+	error,
+) {
+
+	resp, err := s.productService.GetProductsByIDs(ctx, req)
 	if err != nil {
 		return nil, grpcerrors.FromAppError(err, "product-service")
 	}
@@ -86,7 +118,8 @@ func (
 	ctx context.Context,
 	req *pb.SearchProductsRequest,
 ) (
-	*pb.SearchProductsResponse, error,
+	*pb.SearchProductsResponse,
+	error,
 ) {
 
 	resp, err := s.productService.SearchProducts(ctx, req)
@@ -104,7 +137,8 @@ func (
 	ctx context.Context,
 	req *pb.ReserveStockRequest,
 ) (
-	*pb.ReserveStockResponse, error,
+	*pb.ReserveStockResponse,
+	error,
 ) {
 
 	resp, err := s.productService.ReserveStock(ctx, req)
@@ -122,7 +156,8 @@ func (
 	ctx context.Context,
 	req *pb.ReleaseStockRequest,
 ) (
-	*pb.ReleaseStockResponse, error,
+	*pb.ReleaseStockResponse,
+	error,
 ) {
 
 	resp, err := s.productService.ReleaseStock(ctx, req)
@@ -140,7 +175,8 @@ func (
 	ctx context.Context,
 	req *pb.ConfirmStockRequest,
 ) (
-	*pb.ConfirmStockResponse, error,
+	*pb.ConfirmStockResponse,
+	error,
 ) {
 
 	resp, err := s.productService.ConfirmStock(ctx, req)
