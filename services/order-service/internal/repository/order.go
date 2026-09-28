@@ -60,11 +60,6 @@ type orderRepository struct {
 	pool *pgxpool.Pool
 }
 
-// ساخت یک رپوزیتوری سفارشات
-func NewOrderRepository(pool *pgxpool.Pool) OrderRepository {
-	return &orderRepository{pool: pool}
-}
-
 // ساخت یک سفارش در یک تراکنش
 func (
 	r *orderRepository,
