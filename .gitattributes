@@ -1,6 +1,3 @@
-# زبان اصلی پروژه را Go معرفی کنید
-* linguist-language=Go
-
 # فایل‌هایی که نباید در آمار زبان محسوب شوند
 Makefile linguist-vendored
 *.sql linguist-vendored
