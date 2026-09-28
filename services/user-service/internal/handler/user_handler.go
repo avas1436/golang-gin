@@ -16,13 +16,6 @@ type GRPCServer struct {
 	userService                       *service.UserService
 }
 
-// NewGRPCServer یک نمونه جدید از سرور gRPC را می‌سازد
-func NewGRPCServer(userService *service.UserService) *GRPCServer {
-	return &GRPCServer{
-		userService: userService,
-	}
-}
-
 // Register
 func (
 	s *GRPCServer,

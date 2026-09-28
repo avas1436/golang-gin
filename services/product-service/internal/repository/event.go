@@ -18,8 +18,10 @@ type EventRepository interface {
 		eventID uuid.UUID,
 		eventType string,
 		productID uuid.UUID,
+		orderID uuid.UUID,
 	) (
-		alreadyProcessed bool, err error,
+		alreadyProcessed bool,
+		err error,
 	)
 }
 
@@ -36,17 +38,31 @@ func (r *eventRepository) MarkProcessed(
 	eventID uuid.UUID,
 	eventType string,
 	productID uuid.UUID,
+	orderID uuid.UUID,
 ) (
 	bool, error,
 ) {
 
 	query := `
-		INSERT INTO processed_events (event_id, event_type, product_id)
-		VALUES ($1, $2, $3)
+		INSERT INTO processed_events (
+		event_id, 
+		event_type, 
+		product_id, 
+		order_id
+		)
+		VALUES ($1, $2, $3, $4)
 		ON CONFLICT (event_id) DO NOTHING
 	`
 
-	result, err := r.db.Exec(ctx, query, eventID, eventType, productID)
+	result, err := r.db.Exec(
+		ctx,
+		query,
+		eventID,
+		eventType,
+		productID,
+		orderID,
+	)
+
 	if err != nil {
 		return false, appErrors.Wrap(
 			appErrors.KindInternal,

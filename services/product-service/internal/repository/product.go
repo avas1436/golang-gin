@@ -31,10 +31,25 @@ type ProductRepository interface {
 		*model.Product, error,
 	)
 
+	// دریافت دسته جمعی با آرایه از آیدی های محصولات
+	GetByIDs(
+		ctx context.Context,
+		ids []uuid.UUID,
+	) (
+		[]*model.Product,
+		error,
+	)
+
 	// ویرایش محصول
 	Update(
 		ctx context.Context,
 		p *model.Product,
+	) error
+
+	// حذف نرم محصول
+	Delete(
+		ctx context.Context,
+		id uuid.UUID,
 	) error
 
 	// جستجوی محصولات در بین نام و توضیحات به صورت فازی
@@ -148,8 +163,17 @@ func (
 	ctx context.Context,
 	id uuid.UUID,
 ) (
-	*model.Product, error,
+	*model.Product,
+	error,
 ) {
+
+	// اعتبار سنجی مقدار ورودی
+	if id == uuid.Nil {
+		return nil, appErrors.New(
+			appErrors.KindInvalidInput,
+			"Product ID cannot be nil",
+		)
+	}
 
 	query := `
 		SELECT
@@ -202,6 +226,79 @@ func (
 	}
 
 	return p, nil
+}
+
+// GetByIDs دریافت دسته جمعی محصولات برای جلوگیری از مشکل N+1
+func (
+	r *productRepository,
+) GetByIDs(
+	ctx context.Context,
+	ids []uuid.UUID,
+) (
+	[]*model.Product,
+	error,
+) {
+
+	// اعتبار سنجی مقدار ورودی
+	if len(ids) == 0 {
+		return []*model.Product{}, nil
+	}
+
+	query := `
+		SELECT
+			id, 
+			name, 
+			description, 
+			category, 
+			price,
+			total_stock, 
+			reserved_stock, 
+			is_active,
+			created_at, 
+			updated_at
+		FROM products
+		WHERE id = ANY($1) AND is_active = true
+	`
+
+	rows, err := r.db.Query(ctx, query, ids)
+	if err != nil {
+		return nil, appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to query products by ids",
+		)
+	}
+	defer rows.Close()
+
+	products := make([]*model.Product, 0, len(ids))
+	for rows.Next() {
+
+		p := &model.Product{}
+
+		if err := rows.Scan(
+			&p.ID,
+			&p.Name,
+			&p.Description,
+			&p.Category,
+			&p.Price,
+			&p.TotalStock,
+			&p.ReservedStock,
+			&p.IsActive,
+			&p.CreatedAt,
+			&p.UpdatedAt,
+		); err != nil {
+
+			return nil, appErrors.Wrap(
+				appErrors.KindInternal,
+				err,
+				"failed to scan product row",
+			)
+
+		}
+		products = append(products, p)
+	}
+
+	return products, rows.Err()
 }
 
 // در این تابع فیلد های موجودی قابل تغییر نیست
@@ -265,6 +362,35 @@ func (
 	return nil
 }
 
+// Delete حذف منطقی (Soft Delete) محصول
+func (
+	r *productRepository,
+) Delete(
+	ctx context.Context,
+	id uuid.UUID,
+) error {
+
+	query := `UPDATE products SET is_active = false WHERE id = $1 AND is_active = true`
+
+	result, err := r.db.Exec(ctx, query, id)
+	if err != nil {
+		return appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to soft delete product",
+		)
+	}
+
+	if result.RowsAffected() == 0 {
+		return appErrors.New(
+			appErrors.KindNotFound,
+			"product not found or already deleted",
+		)
+	}
+
+	return nil
+}
+
 // Search از ایندکس GIN روی (name || ' ' || description) با
 // pg_trgm استفاده می‌کند تا substring/fuzzy search سریع باشد.
 // اگر query خالی باشد، فقط فیلتر category اعمال می‌شود
@@ -275,7 +401,8 @@ func (r *productRepository) Search(
 	limit int,
 	offset int,
 ) (
-	[]*model.Product, error,
+	[]*model.Product,
+	error,
 ) {
 
 	if limit <= 0 {

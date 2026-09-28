@@ -3,10 +3,16 @@
 package main
 
 import (
+	"pkg/auth"
+	"pkg/postgres"
+	"pkg/rabbitmq"
+	"pkg/ratelimit"
+	redispkg "pkg/redis"
+
 	"product-service/config"
 	"product-service/internal/cache"
 	"product-service/internal/handler"
-	"product-service/internal/platform"
+	"product-service/internal/messaging"
 	"product-service/internal/repository"
 	"product-service/internal/server"
 	"product-service/internal/service"
@@ -15,19 +21,56 @@ import (
 )
 
 func main() {
+	app := fx.New(
 
-	// fx.New خودش سیگنال‌های سیستم‌عامل (SIGINT/SIGTERM) را هندل
-	// می‌کند و به‌ترتیب معکوسِ ساخت، Lifecycle Hook های OnStop را
-	// صدا می‌زند؛ برخلاف الگوی دستی User Service (app.New +
-	// application.Run)، اینجا دیگر نیازی به نوشتن خودمان context/
-	// signal handling نیست
-	fx.New(
+		// ----------------------------------
+		// Configuration
+		// ----------------------------------
+
+		// بارگذاری کانفیگ پروژه
 		config.Module,
-		platform.Module,
+
+		// ----------------------------------
+		// Shared Infrastructure
+		// ----------------------------------
+
+		// کانکشن پول دیتابیس PostgreSQL
+		postgres.Module,
+
+		// اتصال ردیس
+		redispkg.Module,
+
+		// ناشر و مصرف‌کننده RabbitMQ
+		rabbitmq.Module,
+
+		// محدودکننده نرخ درخواست
+		ratelimit.Module,
+
+		// مدیریت توکن و احراز هویت JWT
+		auth.Module,
+
+		// ----------------------------------
+		// Payment Service
+		// ----------------------------------
+
+		// لایه دسترسی به دیتابیس
 		repository.Module,
+
+		// لایه کشینگ
 		cache.Module,
+
+		// لایه منطق تجاری و مدیریت
 		service.Module,
+
+		// لایه gRPC Handler
 		handler.Module,
+
+		// Consumerها و Publisherهای رویدادها
+		messaging.Module,
+
+		// سرور gRPC
 		server.Module,
-	).Run()
+	)
+
+	app.Run()
 }

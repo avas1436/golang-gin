@@ -4,7 +4,6 @@ package service
 
 import (
 	"context"
-	"pkg/auth"
 	appErrors "pkg/errors"
 	pb "pkg/proto/product"
 
@@ -14,60 +13,9 @@ import (
 	"github.com/google/uuid"
 )
 
-// مقدار ثابت نقش ادمین
-const roleAdmin = "admin"
-
 // ساختار سرویس محصول
 type ProductService struct {
 	productRepo repository.ProductRepository
-}
-
-// سازنده یک ساختار سرویس محصول
-func NewProductService(
-	productRepo repository.ProductRepository,
-) *ProductService {
-
-	return &ProductService{
-		productRepo: productRepo,
-	}
-}
-
-// یک تابع مشترک برای چک کردن نقش کاربر
-func requireAdmin(ctx context.Context) error {
-
-	// دریافت مقادیر احراز هویت که در کانتکست قرار گرفته
-	claims, ok := auth.ClaimsFromContext(ctx)
-	if !ok {
-		return appErrors.New(
-			appErrors.KindUnauthenticated,
-			"authentication required",
-		)
-	}
-
-	// بررسی میکند نقش ادمین باشد
-	if claims.Role != roleAdmin {
-		return appErrors.New(
-			appErrors.KindPermissionDenied,
-			"only admins can perform this action",
-		)
-	}
-
-	return nil
-}
-
-// کار این تابع اینه که تایپ رشته دریافت شده از سرویس های دیگر
-// رو به تایپ uuid تبدیل میکنه
-func parseProductID(id string) (uuid.UUID, error) {
-
-	parsed, err := uuid.Parse(id)
-	if err != nil {
-		return uuid.Nil, appErrors.New(
-			appErrors.KindInvalidInput,
-			"invalid product id",
-		)
-	}
-
-	return parsed, nil
 }
 
 // ساخت ادمین برای کاربر ادمین
@@ -163,6 +111,40 @@ func (
 	return toProtoProduct(fresh), nil
 }
 
+// DeleteProduct حذف نرم محصول توسط ادمین
+func (
+	s *ProductService,
+) DeleteProduct(
+	ctx context.Context,
+	req *pb.DeleteProductRequest,
+) (
+	*pb.DeleteProductResponse,
+	error,
+) {
+
+	if req == nil {
+		return nil, appErrors.New(
+			appErrors.KindInvalidInput,
+			"delete product request is nil",
+		)
+	}
+
+	if err := requireAdmin(ctx); err != nil {
+		return nil, err
+	}
+
+	id, err := parseProductID(req.Id)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.productRepo.Delete(ctx, id); err != nil {
+		return nil, err
+	}
+
+	return &pb.DeleteProductResponse{Success: true}, nil
+}
+
 // دریافت مشخصات محصول
 func (
 	s *ProductService,
@@ -191,6 +173,44 @@ func (
 	}
 
 	return toProtoProduct(p), nil
+}
+
+// GetProductsByIDs دریافت دسته‌جمعی محصولات برای Order Service
+func (
+	s *ProductService,
+) GetProductsByIDs(
+	ctx context.Context,
+	req *pb.GetProductsByIDsRequest,
+) (
+	*pb.GetProductsByIDsResponse,
+	error,
+) {
+
+	if req == nil {
+		return nil, appErrors.New(
+			appErrors.KindInvalidInput,
+			"get products by ids request is nil",
+		)
+	}
+
+	// تبدیل لیست رشته های آیدی به uuid
+	uuids := make([]uuid.UUID, 0, len(req.Ids))
+	for _, idStr := range req.Ids {
+		id, err := parseProductID(idStr)
+		if err != nil {
+			return nil, err
+		}
+		uuids = append(uuids, id)
+	}
+
+	products, err := s.productRepo.GetByIDs(ctx, uuids)
+	if err != nil {
+		return nil, err
+	}
+
+	return &pb.GetProductsByIDsResponse{
+		Products: toProtoProductList(products),
+	}, nil
 }
 
 // جستجوی محصول که هم میتواند با کتگوری و هم با متن نام و توضیحات باشد

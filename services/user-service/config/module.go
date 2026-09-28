@@ -1,4 +1,4 @@
-// // services/product-service/config/module.go
+// // services/user-service/config/module.go
 
 package config
 
@@ -25,11 +25,13 @@ func ProvideRabbitMQConfig(cfg *Config) *commonConfig.RabbitMQConfig {
 
 var Module = fx.Module(
 	"config",
+
 	fx.Provide(
 		Load,
+
 		ProvidePostgresConfig,
 		ProvideRedisConfig,
-		ProvideRabbitMQConfig,
 		ProvideJWTConfig,
+		ProvideRabbitMQConfig,
 	),
 )

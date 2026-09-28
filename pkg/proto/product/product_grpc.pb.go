@@ -21,13 +21,15 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	ProductService_CreateProduct_FullMethodName  = "/product.ProductService/CreateProduct"
-	ProductService_UpdateProduct_FullMethodName  = "/product.ProductService/UpdateProduct"
-	ProductService_GetProduct_FullMethodName     = "/product.ProductService/GetProduct"
-	ProductService_SearchProducts_FullMethodName = "/product.ProductService/SearchProducts"
-	ProductService_ReserveStock_FullMethodName   = "/product.ProductService/ReserveStock"
-	ProductService_ReleaseStock_FullMethodName   = "/product.ProductService/ReleaseStock"
-	ProductService_ConfirmStock_FullMethodName   = "/product.ProductService/ConfirmStock"
+	ProductService_CreateProduct_FullMethodName    = "/product.ProductService/CreateProduct"
+	ProductService_UpdateProduct_FullMethodName    = "/product.ProductService/UpdateProduct"
+	ProductService_DeleteProduct_FullMethodName    = "/product.ProductService/DeleteProduct"
+	ProductService_GetProduct_FullMethodName       = "/product.ProductService/GetProduct"
+	ProductService_GetProductsByIDs_FullMethodName = "/product.ProductService/GetProductsByIDs"
+	ProductService_SearchProducts_FullMethodName   = "/product.ProductService/SearchProducts"
+	ProductService_ReserveStock_FullMethodName     = "/product.ProductService/ReserveStock"
+	ProductService_ReleaseStock_FullMethodName     = "/product.ProductService/ReleaseStock"
+	ProductService_ConfirmStock_FullMethodName     = "/product.ProductService/ConfirmStock"
 )
 
 // ProductServiceClient is the client API for ProductService service.
@@ -37,8 +39,10 @@ type ProductServiceClient interface {
 	// Admin
 	CreateProduct(ctx context.Context, in *CreateProductRequest, opts ...grpc.CallOption) (*Product, error)
 	UpdateProduct(ctx context.Context, in *UpdateProductRequest, opts ...grpc.CallOption) (*Product, error)
+	DeleteProduct(ctx context.Context, in *DeleteProductRequest, opts ...grpc.CallOption) (*DeleteProductResponse, error)
 	// User & Admin
 	GetProduct(ctx context.Context, in *GetProductRequest, opts ...grpc.CallOption) (*Product, error)
+	GetProductsByIDs(ctx context.Context, in *GetProductsByIDsRequest, opts ...grpc.CallOption) (*GetProductsByIDsResponse, error)
 	SearchProducts(ctx context.Context, in *SearchProductsRequest, opts ...grpc.CallOption) (*SearchProductsResponse, error)
 	// Saga
 	ReserveStock(ctx context.Context, in *ReserveStockRequest, opts ...grpc.CallOption) (*ReserveStockResponse, error)
@@ -74,10 +78,30 @@ func (c *productServiceClient) UpdateProduct(ctx context.Context, in *UpdateProd
 	return out, nil
 }
 
+func (c *productServiceClient) DeleteProduct(ctx context.Context, in *DeleteProductRequest, opts ...grpc.CallOption) (*DeleteProductResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteProductResponse)
+	err := c.cc.Invoke(ctx, ProductService_DeleteProduct_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *productServiceClient) GetProduct(ctx context.Context, in *GetProductRequest, opts ...grpc.CallOption) (*Product, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(Product)
 	err := c.cc.Invoke(ctx, ProductService_GetProduct_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *productServiceClient) GetProductsByIDs(ctx context.Context, in *GetProductsByIDsRequest, opts ...grpc.CallOption) (*GetProductsByIDsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetProductsByIDsResponse)
+	err := c.cc.Invoke(ctx, ProductService_GetProductsByIDs_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -131,8 +155,10 @@ type ProductServiceServer interface {
 	// Admin
 	CreateProduct(context.Context, *CreateProductRequest) (*Product, error)
 	UpdateProduct(context.Context, *UpdateProductRequest) (*Product, error)
+	DeleteProduct(context.Context, *DeleteProductRequest) (*DeleteProductResponse, error)
 	// User & Admin
 	GetProduct(context.Context, *GetProductRequest) (*Product, error)
+	GetProductsByIDs(context.Context, *GetProductsByIDsRequest) (*GetProductsByIDsResponse, error)
 	SearchProducts(context.Context, *SearchProductsRequest) (*SearchProductsResponse, error)
 	// Saga
 	ReserveStock(context.Context, *ReserveStockRequest) (*ReserveStockResponse, error)
@@ -154,8 +180,14 @@ func (UnimplementedProductServiceServer) CreateProduct(context.Context, *CreateP
 func (UnimplementedProductServiceServer) UpdateProduct(context.Context, *UpdateProductRequest) (*Product, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpdateProduct not implemented")
 }
+func (UnimplementedProductServiceServer) DeleteProduct(context.Context, *DeleteProductRequest) (*DeleteProductResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteProduct not implemented")
+}
 func (UnimplementedProductServiceServer) GetProduct(context.Context, *GetProductRequest) (*Product, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetProduct not implemented")
+}
+func (UnimplementedProductServiceServer) GetProductsByIDs(context.Context, *GetProductsByIDsRequest) (*GetProductsByIDsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetProductsByIDs not implemented")
 }
 func (UnimplementedProductServiceServer) SearchProducts(context.Context, *SearchProductsRequest) (*SearchProductsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SearchProducts not implemented")
@@ -226,6 +258,24 @@ func _ProductService_UpdateProduct_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ProductService_DeleteProduct_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteProductRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProductServiceServer).DeleteProduct(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProductService_DeleteProduct_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProductServiceServer).DeleteProduct(ctx, req.(*DeleteProductRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ProductService_GetProduct_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetProductRequest)
 	if err := dec(in); err != nil {
@@ -240,6 +290,24 @@ func _ProductService_GetProduct_Handler(srv interface{}, ctx context.Context, de
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(ProductServiceServer).GetProduct(ctx, req.(*GetProductRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _ProductService_GetProductsByIDs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetProductsByIDsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ProductServiceServer).GetProductsByIDs(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ProductService_GetProductsByIDs_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ProductServiceServer).GetProductsByIDs(ctx, req.(*GetProductsByIDsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -332,8 +400,16 @@ var ProductService_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _ProductService_UpdateProduct_Handler,
 		},
 		{
+			MethodName: "DeleteProduct",
+			Handler:    _ProductService_DeleteProduct_Handler,
+		},
+		{
 			MethodName: "GetProduct",
 			Handler:    _ProductService_GetProduct_Handler,
+		},
+		{
+			MethodName: "GetProductsByIDs",
+			Handler:    _ProductService_GetProductsByIDs_Handler,
 		},
 		{
 			MethodName: "SearchProducts",

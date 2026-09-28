@@ -4,20 +4,13 @@ package cache
 
 import (
 	"context"
-	"strconv"
 	"time"
-
-	pkgcache "pkg/cache"
 
 	"product-service/internal/model"
 	"product-service/internal/repository"
 
 	"github.com/google/uuid"
-	"github.com/redis/go-redis/v9"
 )
-
-// نام محیط جداگانه برای سرویس محصولات
-const namespace = "product-service"
 
 // cachedProductRepository یک Decorator روی ProductRepository واقعی
 // است: قبل از رفتن به دیتابیس، اول کش را چک می‌کند.
@@ -29,80 +22,12 @@ type cachedProductRepository struct {
 	// رپوزیتوری پایه سرویس
 	repo repository.ProductRepository
 
-	// دیتا تایت های مورد نیاز
-	products *pkgcache.Cache[model.Product]
-	searches *pkgcache.Cache[[]*model.Product]
-
-	// کلید های namespace ها
-	keys KeyConfig
+	// استور لازم برای ساخت و اعمال کلید
+	productCacheStore *ProductCacheStore
 
 	// انقضای هر قسمت
 	productTTL time.Duration
 	searchTTL  time.Duration
-}
-
-// KeyConfig تفکیک namespace را به بیرون از این فایل expose نمی‌کند؛
-// فقط برای خوانایی سازنده استفاده می‌شود
-type KeyConfig struct {
-	Products pkgcache.KeyBuilder
-	Searches pkgcache.KeyBuilder
-}
-
-// NewCachedProductRepository یک ProductRepository برمی‌گرداند که
-// همان رفتار repo را دارد، به‌علاوه‌ی کش خودکار برای GetByID و
-// Search. productTTL/searchTTL عمداً جدا از هم هستند: جزئیات یک
-// محصول (نام، توضیحات) کم‌تغییر است پس TTL بلندتر منطقی است، اما
-// نتایج جست‌وجو به موجودی لحظه‌ای وابسته‌اند پس باید زودتر منقضی
-// شوند
-func NewCachedProductRepository(
-	repo repository.ProductRepository,
-	client *redis.Client,
-	productTTL time.Duration,
-	searchTTL time.Duration,
-) repository.ProductRepository {
-
-	return &cachedProductRepository{
-		// رپوزیتوری
-		repo: repo,
-
-		// قسمت های مختلف با تایپ های مختلف
-		products: pkgcache.New[model.Product](client),
-		searches: pkgcache.New[[]*model.Product](client),
-
-		// کلید های هر قسمت
-		keys: KeyConfig{
-			Products: pkgcache.NewKeyBuilder(namespace + ":product"),
-			Searches: pkgcache.NewKeyBuilder(namespace + ":search"),
-		},
-
-		// انقضای هر قسمت
-		productTTL: productTTL,
-		searchTTL:  searchTTL,
-	}
-}
-
-// ساخت کلید برای هر محصول
-func (c *cachedProductRepository) productKey(id uuid.UUID) string {
-	return c.keys.Products.Build(id.String())
-}
-
-// از namespase جستجو شروع کرده و با قرار دادن تمامی پارامتر های
-// دخیل در نتیجه یک جستجو کلید کش برای جستجو میسازد
-func (
-	c *cachedProductRepository,
-) searchKey(
-	query,
-	category string,
-	limit,
-	offset int,
-) string {
-
-	return c.keys.Searches.Build(
-		category,
-		query,
-		strconv.Itoa(limit),
-		strconv.Itoa(offset),
-	)
 }
 
 // همان فرایند ساخت محصول جدید در رپوزیتوری که هیچ نیازی به کش ندارد
@@ -123,35 +48,82 @@ func (
 	ctx context.Context,
 	id uuid.UUID,
 ) (
-	*model.Product, error,
+	*model.Product,
+	error,
 ) {
 
-	// کلید در این قسمت ساخته میشود
-	// از namespace مربوطه شروع میکند و تا اجزا پیش میرود
-	key := c.productKey(id)
-
-	// در این قسمت تنها مدل را میسازیم و به هردلیلی ارور گرفتیم رد میشویم
-	// سیستم fail-open است تا از دسترس خارج شدن ردیس تنها در
-	// پروفورمنس سیستم اثر بگذارد نه دسترسی
-	if cached, ok, err := c.products.Get(ctx, key); err == nil && ok {
-
-		p := cached
-
-		return &p, nil
+	// دریافت مقدار کلید
+	if p, ok, err := c.productCacheStore.GetProduct(ctx, id); err == nil && ok {
+		return p, nil
 	}
 
-	// اگر ردیس در دسترس نبود میرویم سراغ رپوزیتوری و دیتا را از دیتابیس
-	// استخراج میکنیم
+	// اگر در ردیس نبود دریافت از دیتابیس
 	p, err := c.repo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 
-	// خطای Set هم نادیده گرفته می‌شود؛ نبود کش فقط روی پرفورمنس
-	// اثر دارد نه درستی پاسخ
-	_ = c.products.Set(ctx, key, *p, c.productTTL)
+	// قرار دادن مقدار در دیتابیس
+	_ = c.productCacheStore.SetProduct(ctx, p, c.productTTL)
 
 	return p, nil
+
+}
+
+// GetByIDs ترکیب کش و دیتابیس برای جلوگیری از مشکل N+1
+func (
+	c *cachedProductRepository,
+) GetByIDs(
+	ctx context.Context,
+	ids []uuid.UUID,
+) (
+	[]*model.Product,
+	error,
+) {
+
+	// بررسی خالی بودن درخواست
+	if len(ids) == 0 {
+		return []*model.Product{}, nil
+	}
+
+	// یک لیست از نتایج دریافتی از ردیس
+	result := make([]*model.Product, 0, len(ids))
+
+	// آیدی هر محصولی که در ردیس نباشد در این لیست قرار میگیره
+	missingIDs := make([]uuid.UUID, 0)
+
+	for _, id := range ids {
+
+		if p, ok, err := c.productCacheStore.GetProduct(
+			ctx, id,
+		); err == nil && ok {
+
+			result = append(result, p)
+
+		} else {
+
+			missingIDs = append(missingIDs, id)
+		}
+	}
+
+	// اگر هیچ آیدی ای miss نشده بود خروجی بده
+	if len(missingIDs) == 0 {
+		return result, nil
+	}
+
+	// دریافت آیدی های میس شده از دیتابیس
+	fromDB, err := c.repo.GetByIDs(ctx, missingIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	// قرار دادن نتایح در لیست خروجی
+	for _, p := range fromDB {
+		result = append(result, p)
+		_ = c.productCacheStore.SetProduct(ctx, p, c.productTTL)
+	}
+
+	return result, nil
 }
 
 // Update دیتابیس را آپدیت می‌کند و بلافاصله کش قدیمی همان محصول را
@@ -169,8 +141,25 @@ func (
 	}
 
 	// اگر موفقیت آمیز بود پاک کردن مقدار محصول از کش
-	_ = c.products.Delete(ctx, c.productKey(p.ID))
+	_ = c.productCacheStore.InvalidateProduct(ctx, p.ID)
 
+	return nil
+
+}
+
+// حذف نرم محصول
+func (
+	c *cachedProductRepository,
+) Delete(
+	ctx context.Context,
+	id uuid.UUID,
+) error {
+
+	if err := c.repo.Delete(ctx, id); err != nil {
+		return err
+	}
+
+	_ = c.productCacheStore.InvalidateProduct(ctx, id)
 	return nil
 }
 
@@ -188,18 +177,41 @@ func (
 	error,
 ) {
 
-	key := c.searchKey(query, category, limit, offset)
+	// ابتدا دریافت از ردیس
+	if cached, ok, err := c.productCacheStore.GetSearch(
+		ctx,
+		query,
+		category,
+		limit,
+		offset,
+	); err == nil && ok {
 
-	if cached, ok, err := c.searches.Get(ctx, key); err == nil && ok {
 		return cached, nil
 	}
 
-	products, err := c.repo.Search(ctx, query, category, limit, offset)
+	// اگر نبود از دیتابیس
+	products, err := c.repo.Search(
+		ctx,
+		query,
+		category,
+		limit,
+		offset,
+	)
+
 	if err != nil {
 		return nil, err
 	}
 
-	_ = c.searches.Set(ctx, key, products, c.searchTTL)
+	// قرار دادن در ردیس
+	_ = c.productCacheStore.SetSearch(
+		ctx,
+		query,
+		category,
+		limit,
+		offset,
+		products,
+		c.searchTTL,
+	)
 
 	return products, nil
 }
@@ -220,7 +232,7 @@ func (
 		return err
 	}
 
-	_ = c.products.Delete(ctx, c.productKey(id))
+	_ = c.productCacheStore.InvalidateProduct(ctx, id)
 
 	return nil
 }
@@ -237,7 +249,7 @@ func (
 		return err
 	}
 
-	_ = c.products.Delete(ctx, c.productKey(id))
+	_ = c.productCacheStore.InvalidateProduct(ctx, id)
 
 	return nil
 }
@@ -254,7 +266,7 @@ func (
 		return err
 	}
 
-	_ = c.products.Delete(ctx, c.productKey(id))
+	_ = c.productCacheStore.InvalidateProduct(ctx, id)
 
 	return nil
 }

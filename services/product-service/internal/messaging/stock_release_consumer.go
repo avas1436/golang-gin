@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"product-service/internal/cache"
 	"product-service/internal/repository"
 
 	"pkg/events"
@@ -21,16 +22,20 @@ const eventTypeStockRelease = "stock.release.requested"
 // می‌کند. حالا قبل از هر کاری با EventRepository چک می‌کند که این
 // event قبلاً پردازش نشده باشد
 type StockReleaseConsumer struct {
-	pool *pgxpool.Pool
+	pool         *pgxpool.Pool
+	productStore *cache.ProductCacheStore
 }
 
 func NewStockReleaseConsumer(
 	pool *pgxpool.Pool,
+	productStore *cache.ProductCacheStore,
 ) *StockReleaseConsumer {
 
 	return &StockReleaseConsumer{
-		pool: pool,
+		pool:         pool,
+		productStore: productStore,
 	}
+
 }
 
 // Handle امضای rabbitmq.HandlerFunc را دارد
@@ -57,7 +62,7 @@ func (
 		return nil
 	}
 
-	return postgres.WithTx(
+	err := postgres.WithTx(
 		ctx,
 		h.pool,
 		func(tx pgx.Tx) error {
@@ -74,6 +79,7 @@ func (
 				event.EventID,
 				eventTypeStockRelease,
 				event.ProductID,
+				event.OrderID,
 			)
 
 			if err != nil {
@@ -104,24 +110,30 @@ func (
 				event.Quantity,
 			); err != nil {
 
-				log.Printf(
-					"product-service: failed to release stock for product %s: %v",
-					event.ProductID,
-					err,
-				)
+				log.Printf("product-service: failed to release stock for product %s: %v", event.ProductID, err)
 
 				return err
 			}
 
-			// اگر اینجا nil برگردد:
-			//
-			// COMMIT
-			//
-			// اگر هر چیزی قبلش error بدهد:
-			//
-			// ROLLBACK
-
 			return nil
 		},
 	)
+
+	if err != nil {
+		return err
+	}
+
+	// ابطال کش به‌صورت یکپارچه پس از COMMIT تراکنش
+	if err := h.productStore.InvalidateProduct(
+		ctx,
+		event.ProductID,
+	); err != nil {
+
+		log.Printf("product-service: failed to invalidate cache for product %s: %v",
+			event.ProductID,
+			err,
+		)
+	}
+
+	return nil
 }

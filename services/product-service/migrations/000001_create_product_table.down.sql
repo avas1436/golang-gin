@@ -1,5 +1,5 @@
-DROP TABLE IF EXISTS products;
+-- حذف جدول محصولات (تریگرها و اندیس‌های متصل به جدول خودکار حذف می‌شوند)
+DROP TABLE IF EXISTS products CASCADE;
 
-DROP TRIGGER IF EXISTS update_products_updated_at ON products;
-
-DROP FUNCTION IF EXISTS update_updated_at_column();
+-- حذف تابع تریگر
+DROP FUNCTION IF EXISTS update_products_updated_at_column();

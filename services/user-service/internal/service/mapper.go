@@ -12,34 +12,42 @@ import (
 // ساخت پاسخ احراز هویت
 func toProtoAuth(
 	u *model.User,
-	access_token string,
-	refresh_token string,
-	expires_in int64,
+	accessToken string,
+	refreshToken string,
+	expiresIn int64,
 ) *pb.AuthResponse {
 
 	return &pb.AuthResponse{
-		AccessToken:  access_token,
-		RefreshToken: refresh_token,
-		ExpiresIn:    expires_in,
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		ExpiresIn:    expiresIn,
 		User:         toProtoUser(u),
 	}
+
 }
 
 // تبدیل اطلاعات کاربر به پروتو
 func toProtoUser(u *model.User) *pb.User {
+
+	if u == nil {
+		return nil
+	}
+
 	return &pb.User{
-		Id:          u.ID,
+		Id:          u.ID.String(),
 		Email:       u.Email,
 		PhoneNumber: u.PhoneNumber,
 		FullName:    u.FullName,
 		Role:        toProtoRole(u.Role),
 		CreatedAt:   timestamppb.New(u.CreatedAt),
 	}
+
 }
 
 // تبدیل نقش کاربر به پروتو
 func toProtoRole(r model.Role) pb.Role {
 	switch r {
+
 	case model.RoleAdmin:
 		return pb.Role_ROLE_ADMIN
 
@@ -51,5 +59,6 @@ func toProtoRole(r model.Role) pb.Role {
 
 	default:
 		return pb.Role_ROLE_UNSPECIFIED
+
 	}
 }
