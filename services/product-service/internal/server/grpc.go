@@ -12,6 +12,7 @@ import (
 	"pkg/grpcmiddleware"
 	pb "pkg/proto/product"
 	"pkg/ratelimit"
+	redispkg "pkg/redis"
 
 	"product-service/config"
 	"product-service/internal/handler"
@@ -24,23 +25,25 @@ import (
 var Module = fx.Module(
 	"server",
 	fx.Provide(
+		NewTokenManager,
+		NewRateLimiter,
 		NewServer,
 	),
 	fx.Invoke(RegisterHooks),
 )
 
+// NewTokenManager ساخت TokenManager جهت اعتبارسنجی توکن‌ها در AuthInterceptor
+func NewTokenManager(cfg *config.Config) auth.TokenManager {
+	return auth.NewTokenManager(cfg.JWT.Secret, cfg.JWT.AccessTokenTTL)
+}
+
+// NewRateLimiter ساخت RateLimiter برای RateLimitInterceptor
+func NewRateLimiter(client *redispkg.Client) ratelimit.Limiter {
+	return ratelimit.New(client)
+}
+
 // NewServer یک *grpc.Server کامل با زنجیره‌ی Interceptor می‌سازد و
 // ProductService را رویش رجیستر می‌کند.
-//
-// ترتیب زنجیره عمداً این‌طور است:
-//  1. Recovery — باید بیرونی‌ترین لایه باشد تا پنیک هرکدام از
-//     لایه‌های داخلی‌تر (حتی خودِ Logging) را هم بگیرد
-//  2. Logging — نتیجه‌ی نهایی درخواست (شامل رد شدن توسط Auth یا
-//     RateLimit) را ثبت می‌کند
-//  3. RateLimit — قبل از Auth اجرا می‌شود چون بر اساس IP است و
-//     نیازی به parse کردن JWT ندارد؛ ترافیک مخرب/سیل‌آسا را قبل از
-//     صرف هزینه‌ی اعتبارسنجی توکن متوقف می‌کند
-//  4. Auth — آخرین لایه، دقیقاً قبل از رسیدن به منطق واقعی handler
 func NewServer(
 	grpcHandler *handler.GRPCServer,
 	tokens auth.TokenManager,
@@ -53,7 +56,7 @@ func NewServer(
 		grpcmiddleware.RateLimitInterceptor(
 			limiter,
 			handler.RateLimitRules(),
-			nil, // nil یعنی از DefaultKeyFunc (بر اساس IP) استفاده شود
+			nil, // استفاده از IP پیش‌فرض
 		),
 		grpcmiddleware.AuthInterceptor(
 			tokens,
@@ -72,12 +75,6 @@ func NewServer(
 }
 
 // RegisterHooks سرور را به چرخه‌ی حیات Fx متصل می‌کند.
-//
-// OnStart باید سریع برگردد (Fx منتظرش می‌ماند)، در حالی که
-// grpcServer.Serve بلاک‌کننده است؛ به همین دلیل داخل یک goroutine
-// اجرا می‌شود. OnStop با GracefulStop به درخواست‌های در حال پردازش
-// فرصت می‌دهد قبل از بسته‌شدن واقعی کانکشن‌ها تمام شوند (برخلاف
-// Stop که بی‌رحمانه قطع می‌کند)
 func RegisterHooks(
 	lc fx.Lifecycle,
 	grpcServer *grpc.Server,
