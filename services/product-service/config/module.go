@@ -8,19 +8,28 @@ import (
 	"go.uber.org/fx"
 )
 
-func providePostgresConfig(cfg *Config) *commonConfig.PostgresConfig {
+func ProvidePostgresConfig(cfg *Config) *commonConfig.PostgresConfig {
 	return &cfg.Postgres
 }
 
-func provideRedisConfig(cfg *Config) *commonConfig.RedisConfig {
+func ProvideRedisConfig(cfg *Config) *commonConfig.RedisConfig {
 	return &cfg.Redis
+}
+
+func ProvideJWTConfig(cfg *Config) *commonConfig.JWTConfig {
+	return &cfg.JWT
+}
+func ProvideRabbitMQConfig(cfg *Config) *commonConfig.RabbitMQConfig {
+	return &cfg.RabbitMQ
 }
 
 var Module = fx.Module(
 	"config",
 	fx.Provide(
 		Load,
-		providePostgresConfig,
-		provideRedisConfig,
+		ProvidePostgresConfig,
+		ProvideRedisConfig,
+		ProvideRabbitMQConfig,
+		ProvideJWTConfig,
 	),
 )
