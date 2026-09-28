@@ -31,8 +31,8 @@ message CreateProductRequest {
 }
 
 // --- Update Product (Admin only) ---
-// جایگزینی کامل فیلدهای قابل‌ویرایش؛ موجودی از این مسیر تغییر
-// نمی‌کند
+// جایگزینی کامل فیلدهای قابل‌ویرایش؛ موجودی
+// از این مسیر تغییر نمی‌کند
 message UpdateProductRequest {
   string id = 1;
   string name = 2;
@@ -42,9 +42,27 @@ message UpdateProductRequest {
   bool is_active = 6;
 }
 
+// --- Delete Product (Admin only) ---
+message DeleteProductRequest {
+  string id = 1;
+}
+
+message DeleteProductResponse {
+  bool success = 1;
+}
+
 // --- Get Product ---
 message GetProductRequest {
   string id = 1;
+}
+
+// --- Get Products By IDs (Internal / Order Service) ---
+message GetProductsByIDsRequest {
+  repeated string ids = 1;
+}
+
+message GetProductsByIDsResponse {
+  repeated Product products = 1;
 }
 
 // --- Search Products ---
@@ -95,9 +113,12 @@ service ProductService {
   // Admin
   rpc CreateProduct(CreateProductRequest) returns (Product);
   rpc UpdateProduct(UpdateProductRequest) returns (Product);
+  rpc DeleteProduct(DeleteProductRequest) returns (DeleteProductResponse);
 
   // User & Admin
   rpc GetProduct(GetProductRequest) returns (Product);
+  rpc GetProductsByIDs(GetProductsByIDsRequest)
+      returns (GetProductsByIDsResponse);
   rpc SearchProducts(SearchProductsRequest) returns (SearchProductsResponse);
 
   // Saga

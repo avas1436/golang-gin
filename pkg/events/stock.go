@@ -22,6 +22,7 @@ const (
 // برای آزاد کردن تعداد رزرو یا همان عملیات جبرانی
 type StockReleaseRequested struct {
 	EventID     uuid.UUID `json:"event_id"`
+	OrderID     uuid.UUID `json:"order_id"`
 	ProductID   uuid.UUID `json:"product_id"`
 	Quantity    int32     `json:"quantity"`
 	Reason      string    `json:"reason"`

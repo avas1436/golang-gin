@@ -13,15 +13,10 @@ type Config struct {
 
 	Postgres commonConfig.PostgresConfig
 	Redis    commonConfig.RedisConfig
+	RabbitMQ commonConfig.RabbitMQConfig
 
-	JWT   JWTConfig
+	JWT   commonConfig.JWTConfig
 	Cache CacheConfig
-}
-
-// برای بررسی نقش کاربر ادمین به این قسمت نیاز داریم
-type JWTConfig struct {
-	Secret         string
-	AccessTokenTTL time.Duration
 }
 
 // این ساختار مدت اعتبار هر کلید کش رو تعیین میکند
@@ -85,6 +80,11 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
+	rabbitmqPassword, err := env.Require("RABBITMQ_PASSWORD")
+	if err != nil {
+		return nil, err
+	}
+
 	searchCacheTTL, err := env.Duration(
 		"SEARCH_CACHE_TTL",
 		1*time.Minute,
@@ -114,7 +114,15 @@ func Load() (*Config, error) {
 			ConnMaxIdle:  redisConnMaxIdle,
 		},
 
-		JWT: JWTConfig{
+		RabbitMQ: commonConfig.RabbitMQConfig{
+			Host:     env.String("RABBITMQ_HOST", "localhost"),
+			Port:     env.String("RABBITMQ_PORT", "5672"),
+			User:     env.String("RABBITMQ_USER", "guest"),
+			Password: rabbitmqPassword,
+			VHost:    env.String("RABBITMQ_VHOST", "/"),
+		},
+
+		JWT: commonConfig.JWTConfig{
 			Secret:         jwtSecret,
 			AccessTokenTTL: accessTTL,
 		},
