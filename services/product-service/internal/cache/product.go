@@ -154,6 +154,63 @@ func (
 	return p, nil
 }
 
+// GetByIDs ترکیب کش و دیتابیس برای جلوگیری از مشکل N+1
+func (
+	c *cachedProductRepository,
+) GetByIDs(
+	ctx context.Context,
+	ids []uuid.UUID,
+) (
+	[]*model.Product,
+	error,
+) {
+
+	// بررسی خالی بودن لیست درخواست
+	if len(ids) == 0 {
+		return []*model.Product{}, nil
+	}
+
+	// لیست نتایجی که در کش وجود دارند
+	result := make([]*model.Product, 0, len(ids))
+
+	// لیست آیدی هایی که در کش نیستند و باید از دیتابیس استخراج بشن
+	missingIDs := make([]uuid.UUID, 0)
+
+	// بررسی کش برای تک‌تک شناسه‌ها
+	for _, id := range ids {
+
+		key := c.productKey(id)
+
+		// هر آیدی در کش باشد در لیست نتایج قرار میگیرد
+		// و هر آیدی نباشد در لیست missingIDs قرار میگیرد
+		if cached, ok, err := c.products.Get(ctx, key); err == nil && ok {
+			p := cached
+			result = append(result, &p)
+		} else {
+			missingIDs = append(missingIDs, id)
+		}
+	}
+
+	// اگر تمام موارد در کش موجود بودند
+	if len(missingIDs) == 0 {
+		return result, nil
+	}
+
+	// دریافت موارد باقی‌مانده از دیتابیس
+	fromDB, err := c.repo.GetByIDs(ctx, missingIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	// ثبت موارد جدید در کش و اضافه کردن به نتیجه
+	for _, p := range fromDB {
+		result = append(result, p)
+		_ = c.products.Set(ctx, c.productKey(p.ID), *p, c.productTTL)
+	}
+
+	return result, nil
+}
+
 // Update دیتابیس را آپدیت می‌کند و بلافاصله کش قدیمی همان محصول را
 // پاک می‌کند تا خواننده‌ی بعدی داده‌ی تازه ببیند
 func (
@@ -171,6 +228,22 @@ func (
 	// اگر موفقیت آمیز بود پاک کردن مقدار محصول از کش
 	_ = c.products.Delete(ctx, c.productKey(p.ID))
 
+	return nil
+}
+
+// حذف نرم محصول
+func (
+	c *cachedProductRepository,
+) Delete(
+	ctx context.Context,
+	id uuid.UUID,
+) error {
+
+	if err := c.repo.Delete(ctx, id); err != nil {
+		return err
+	}
+
+	_ = c.products.Delete(ctx, c.productKey(id))
 	return nil
 }
 
