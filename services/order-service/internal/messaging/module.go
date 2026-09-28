@@ -4,12 +4,98 @@ package messaging
 
 import (
 	"context"
+	"log"
+	"order-service/internal/repository"
 	"order-service/internal/service"
+	appErrors "pkg/errors"
+
+	"pkg/events"
 
 	"go.uber.org/fx"
 
 	"pkg/rabbitmq"
 )
+
+const (
+	paymentEventsQueue = "order.payment_events.queue"
+	paymentExchange    = "payment_events"
+)
+
+func NewPaymentEventConsumer(
+	conn *rabbitmq.Connection,
+	orderRepo repository.OrderRepository,
+	publisher *RabbitMQEventPublisher,
+) (
+	*PaymentEventConsumer,
+	error,
+) {
+
+	ch, err := conn.Channel()
+	if err != nil {
+		return nil, appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to open channel for payment consumer",
+		)
+	}
+
+	consumer, err := rabbitmq.NewConsumer(ch)
+	if err != nil {
+		_ = ch.Close()
+		return nil, appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to initialize rabbitmq consumer",
+		)
+	}
+
+	// ثبت صف و اتصال آن به Exchange رویدادهای پرداخت (Binding)
+	if err := consumer.BindQueue(
+		paymentEventsQueue,
+		paymentExchange,
+		events.RoutingKeyPaymentCompleted,
+	); err != nil {
+
+		_ = ch.Close()
+
+		return nil, appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to bind queue to payment succeeded routing key",
+		)
+	}
+
+	if err := consumer.BindQueue(
+		paymentEventsQueue,
+		paymentExchange,
+		events.RoutingKeyPaymentFailed,
+	); err != nil {
+
+		_ = ch.Close()
+
+		return nil, appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to bind queue to payment failed routing key",
+		)
+	}
+
+	return &PaymentEventConsumer{
+		consumer:  consumer,
+		orderRepo: orderRepo,
+		publisher: publisher,
+	}, nil
+}
+
+// NewRabbitMQEventPublisher یک Event Publisher می‌سازد.
+func NewRabbitMQEventPublisher(
+	publisher *rabbitmq.Publisher,
+) *RabbitMQEventPublisher {
+
+	return &RabbitMQEventPublisher{
+		publisher: publisher,
+	}
+}
 
 func NewRabbitPublisher(
 	conn *rabbitmq.Connection,
@@ -35,18 +121,25 @@ func NewRabbitPublisher(
 	return publisher, nil
 }
 
-// RegisterPublisherLifecycle مسئول بستن Publisher هنگام
-// shutdown شدن Order Service است.
-//
-// چون Publisher از یک RabbitMQ Channel استفاده می‌کند،
-// باید در زمان shutdown آن را ببندیم.
-func RegisterPublisherLifecycle(
+// RegisterMessagingLifecycle مدیریت شروع Consumer و Shutdown شدن Publisher
+func RegisterMessagingLifecycle(
 	lc fx.Lifecycle,
-	publisher *rabbitmq.Publisher,
+	publisher *RabbitMQEventPublisher,
+	consumer *PaymentEventConsumer,
 ) {
-
 	lc.Append(
 		fx.Hook{
+			OnStart: func(ctx context.Context) error {
+				go func() {
+					if err := consumer.StartListening(context.Background()); err != nil {
+						log.Printf(
+							"order-service: payment consumer stopped with error: %v",
+							err,
+						)
+					}
+				}()
+				return nil
+			},
 			OnStop: func(ctx context.Context) error {
 				return publisher.Close()
 			},
@@ -54,21 +147,20 @@ func RegisterPublisherLifecycle(
 	)
 }
 
-// Module تمام Dependencyهای مربوط به Messaging در
-// Order Service را ثبت می‌کند.
 var Module = fx.Module(
 	"messaging",
 
 	fx.Provide(
-		NewRabbitPublisher,
+		NewRabbitMQEventPublisher,
+		NewPaymentEventConsumer,
 
-		fx.Annotate(
-			NewRabbitMQEventPublisher,
-			fx.As(new(service.EventPublisher)),
-		),
+		// نگاشت RabbitMQEventPublisher به اینترفیس service.EventPublisher
+		func(p *RabbitMQEventPublisher) service.EventPublisher {
+			return p
+		},
 	),
 
 	fx.Invoke(
-		RegisterPublisherLifecycle,
+		RegisterMessagingLifecycle,
 	),
 )

@@ -36,10 +36,6 @@ type eventRepository struct {
 	pool *pgxpool.Pool
 }
 
-func NewEventRepository(pool *pgxpool.Pool) EventRepository {
-	return &eventRepository{pool: pool}
-}
-
 // MarkProcessed با یک INSERT ... ON CONFLICT DO NOTHING پیاده‌سازی
 // شده، نه با یک SELECT جدا قبل از INSERT. دلیلش همان دلیل
 // ReserveStock در Product Service است: بین یک SELECT ("آیا وجود

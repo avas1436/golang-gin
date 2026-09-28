@@ -23,16 +23,6 @@ type RabbitMQEventPublisher struct {
 	publisher *rabbitmq.Publisher
 }
 
-// NewRabbitMQEventPublisher یک Event Publisher می‌سازد.
-func NewRabbitMQEventPublisher(
-	publisher *rabbitmq.Publisher,
-) *RabbitMQEventPublisher {
-
-	return &RabbitMQEventPublisher{
-		publisher: publisher,
-	}
-}
-
 // بعد از کامیت شدن موفق سفارش در سرویس سفارشات این رویداد منتشر میشود
 // تا سرویس های محصول و نوتیف و انبار داری و ... از آن استفاده کنند
 func (
@@ -53,11 +43,14 @@ func (
 	items := make([]events.OrderCreatedItem, 0, len(order.Items))
 
 	for _, item := range order.Items {
-		items = append(items, events.OrderCreatedItem{
-			ProductID: item.ProductID,
-			Quantity:  item.Quantity,
-			UnitPrice: item.UnitPrice,
-		})
+		items = append(
+			items,
+			events.OrderCreatedItem{
+				ProductID: item.ProductID,
+				Quantity:  item.Quantity,
+				UnitPrice: item.UnitPrice,
+			},
+		)
 	}
 
 	event := events.OrderCreated{
@@ -66,7 +59,7 @@ func (
 		UserID:      order.UserID,
 		TotalAmount: order.TotalAmount,
 		Items:       items,
-		CreatedAt:   order.CreatedAt,
+		CreatedAt:   order.CreatedAt.UTC(),
 	}
 
 	return p.publisher.Publish(ctx, events.RoutingKeyOrderCreated, event)
@@ -86,7 +79,7 @@ func (p *RabbitMQEventPublisher) PublishStockReleaseRequested(
 		ProductID:   productID,
 		Quantity:    quantity,
 		Reason:      reason,
-		RequestedAt: time.Now(),
+		RequestedAt: time.Now().UTC(),
 	}
 
 	return p.publisher.Publish(
@@ -111,10 +104,18 @@ func (p *RabbitMQEventPublisher) PublishStockConfirmRequested(
 		OrderID:     orderID,
 		ProductID:   productID,
 		Quantity:    quantity,
-		RequestedAt: time.Now(),
+		RequestedAt: time.Now().UTC(),
 	}
 
 	return p.publisher.Publish(
 		ctx, events.RoutingKeyStockConfirmRequested, event,
 	)
+}
+
+// Close بستن کانال مربوط به Publisher
+func (p *RabbitMQEventPublisher) Close() error {
+	if p == nil || p.publisher == nil {
+		return nil
+	}
+	return p.publisher.Close()
 }
