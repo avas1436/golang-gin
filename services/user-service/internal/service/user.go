@@ -1,4 +1,4 @@
-// services/user-service/internal/service/user_service.go
+// services/user-service/internal/service/user.go
 
 package service
 
@@ -366,10 +366,13 @@ func (
 
 	}
 
+	// بلافاصله چالش را حذف می‌کنیم تا درخواست هم‌زمان دوم
+	// نتواند از آن استفاده کند
 	if err := s.otpRepo.DeleteChallenge(ctx, challengeID); err != nil {
 		return nil, err
 	}
 
+	// پس از اطمینان از حذف چالش، کاربر را دریافت و توکن صادر می‌کنیم
 	user, err := s.userRepo.GetByID(ctx, challenge.UserID)
 	if err != nil {
 		return nil, err
@@ -410,6 +413,7 @@ func (
 
 	tokenHash := s.tokens.HashRefreshToken(req.RefreshToken)
 
+	// استعلام توکن
 	rt, err := s.refreshTokenRepo.GetByTokenHash(ctx, tokenHash)
 	if err != nil {
 
@@ -423,7 +427,7 @@ func (
 		return nil, err
 	}
 
-	// استفاده از متد ساختار رفرش توکن برای اعتبار سنجی آن
+	// بررسی انقضا و باطل‌نشدن در مموری
 	if !rt.IsValid() {
 		return nil, appErrors.New(
 			appErrors.KindUnauthenticated,
@@ -431,12 +435,16 @@ func (
 		)
 	}
 
-	user, err := s.userRepo.GetByID(ctx, rt.UserID)
-	if err != nil {
+	// ابطال اتمیک در دیتابیس پیش از خواندن کاربر و صدور توکن
+	// در صورت درخواست هم‌زمان، فقط یکی از
+	// درخواست‌ها شرط WHERE revoked = false را برآورده کرده و موفق می‌شود
+	if err := s.refreshTokenRepo.Revoke(ctx, rt.ID); err != nil {
 		return nil, err
 	}
 
-	if err := s.refreshTokenRepo.Revoke(ctx, rt.ID); err != nil {
+	// پس از موفقیت در ابطال اتمیک، کاربر دریافت و توکن‌های جدید صادر می‌شوند
+	user, err := s.userRepo.GetByID(ctx, rt.UserID)
+	if err != nil {
 		return nil, err
 	}
 
@@ -535,9 +543,8 @@ func (
 		return nil, err
 	}
 
-	if err := s.refreshTokenRepo.Revoke(ctx, rt.ID); err != nil {
-		return nil, err
-	}
+	// حتی اگر قبلاً باطل شده باشد، خطا نادیده گرفته می‌شود
+	_ = s.refreshTokenRepo.Revoke(ctx, rt.ID)
 
 	return &pb.LogoutResponse{}, nil
 }
