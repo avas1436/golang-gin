@@ -4,9 +4,11 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
+	"strings"
 
 	"pkg/auth"
 	"pkg/grpcmiddleware"
@@ -95,40 +97,27 @@ func NewServer(
 // قابل استفاده نبود، خطا مستقیماً به Fx برگردد.
 //
 // Serve بلاک‌کننده است؛ بنابراین داخل goroutine اجرا می‌شود.
-func (s *GRPCServer) Start(
-	port string,
-) error {
+func (s *GRPCServer) Start(port string) error {
+	addr := port
+	if !strings.HasPrefix(port, ":") {
+		addr = ":" + port
+	}
 
-	listener, err := net.Listen(
-		"tcp",
-		fmt.Sprintf(":%s", port),
-	)
+	listener, err := net.Listen("tcp", addr)
 	if err != nil {
-		return fmt.Errorf(
-			"failed to listen on port %s: %w",
-			port,
-			err,
-		)
+		return fmt.Errorf("failed to listen on port %s: %w", port, err)
 	}
 
 	s.listener = listener
 
 	go func() {
+		log.Printf("order-service: gRPC server listening on %s", addr)
 
-		log.Printf(
-			"order-service: gRPC server listening on :%s",
-			port,
-		)
-
-		if err := s.server.Serve(listener); err != nil {
-
-			// زمانی که Stop/GracefulStop اجرا شود،
-			// Serve نیز متوقف می‌شود. بنابراین این log
-			// لزوماً به معنی خطای واقعی نیست.
-			log.Printf(
-				"order-service: gRPC server stopped: %v",
-				err,
-			)
+		if err := s.server.Serve(listener); err != nil && !errors.Is(
+			err,
+			grpc.ErrServerStopped,
+		) {
+			log.Printf("order-service: gRPC server unexpected error: %v", err)
 		}
 	}()
 
@@ -140,7 +129,6 @@ func (s *GRPCServer) Start(
 // اگر graceful shutdown در مدت ctx تمام نشود، Server به‌صورت
 // اجباری Stop می‌شود تا shutdown کل application گیر نکند.
 func (s *GRPCServer) Stop(ctx context.Context) error {
-
 	done := make(chan struct{})
 
 	go func() {
@@ -149,15 +137,16 @@ func (s *GRPCServer) Stop(ctx context.Context) error {
 	}()
 
 	select {
-
 	case <-done:
+		log.Println("order-service: gRPC server stopped gracefully")
 		return nil
 
 	case <-ctx.Done():
-
-		// درخواست‌های باقی‌مانده را بدون انتظار بیشتر قطع می‌کنیم.
+		// در صورت اتمام مهلت زمانی، بستن اجباری تمام اتصال‌ها
 		s.server.Stop()
-
+		log.Println(
+			"order-service: gRPC server force-stopped due to shutdown timeout",
+		)
 		return ctx.Err()
 	}
 }

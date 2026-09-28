@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"log"
+	"time"
 
 	"pkg/auth"
 	appErrors "pkg/errors"
@@ -13,38 +14,7 @@ import (
 	"order-service/internal/model"
 
 	"github.com/google/uuid"
-	"golang.org/x/sync/errgroup"
 )
-
-// EventPublisher چیزی است که OrderService برای انتشار Eventها نیاز دارد.
-//
-// یک اینترفیس برای جدا کردن منطق سرویس از RabbitMQ پس اصلا لایه
-// نباید از جزییات این ارتباط مطلع باشد
-//
-// پیاده‌سازی این interface در internal/messaging قرار دارد.
-//
-// ویژگی این سه عملیات اینه که کسی منتظر جواب لحظه ای این ها نیست
-// و بهتر است غیر همزمان انجام شوند
-type EventPublisher interface {
-	PublishOrderCreated(
-		ctx context.Context,
-		order *model.Order,
-	) error
-
-	PublishStockReleaseRequested(
-		ctx context.Context,
-		productID uuid.UUID,
-		quantity int32,
-		reason string,
-	) error
-
-	PublishStockConfirmRequested(
-		ctx context.Context,
-		orderID uuid.UUID,
-		productID uuid.UUID,
-		quantity int32,
-	) error
-}
 
 // requireAuthenticated بررسی می‌کند که اطلاعات احراز هویت
 // داخل context وجود داشته باشد.
@@ -104,75 +74,92 @@ func (
 		)
 	}
 
-	// ساخت یک آرایه خالی برای آیتم های سفارش
-	items := make([]*model.OrderItem, len(reqItems))
+	// اعتبار سنجی و ساخت یک لیست از آیدی محصولات
+	productIDs := make([]string, 0, len(reqItems))
 
-	// یک متغیر برای قرار دادن غیر همزمان تعداد زیادی درخواست
-	var g errgroup.Group
-
-	for i, reqItem := range reqItems {
-
-		// حفظ آیتم و ایندکس آن
-		idx, item := i, reqItem
-
-		// تابع غیر همزمان برای ارسال چندین درخواست gRPC
-		g.Go(func() error {
-
-			// بررسی خالی بودن یک آیتم در سفارش
-			if reqItem == nil {
-				return appErrors.New(
-					appErrors.KindInvalidInput,
-					"order item is nil",
-				)
-			}
-
-			// اگر یکی از آیتم ها تعداد کمتر از 1 داشت ارور میدهد
-			if reqItem.Quantity <= 0 {
-				return appErrors.New(
-					appErrors.KindInvalidInput,
-					"item quantity must be greater than zero",
-				)
-			}
-
-			// بررسی اعتبار آیدی محصول
-			productID, err := uuid.Parse(reqItem.ProductId)
-			if err != nil {
-				return appErrors.New(
-					appErrors.KindInvalidInput,
-					"invalid product id"+reqItem.ProductId,
-				)
-			}
-
-			// بررسی وجودیت محصول
-			product, err := s.productClient.GetProduct(
-				ctx,
-				reqItem.ProductId,
+	for _, reqItem := range reqItems {
+		if reqItem == nil {
+			return nil, appErrors.New(
+				appErrors.KindInvalidInput,
+				"order item is nil",
 			)
-			if err != nil {
-				return err
-			}
+		}
 
-			// بررسی فعال بودن محصول
-			if !product.IsActive {
-				return appErrors.New(
-					appErrors.KindInvalidInput,
-					"product is not active",
-				)
-			}
+		if reqItem.Quantity <= 0 {
+			return nil, appErrors.New(
+				appErrors.KindInvalidInput,
+				"item quantity must be greater than zero",
+			)
+		}
 
-			items[idx] = &model.OrderItem{
-				ProductID:   productID,
-				ProductName: product.Name,
-				Quantity:    item.Quantity,
-				Subtotal:    int64(item.Quantity) * product.Price,
-				UnitPrice:   product.Price,
-			}
-			return nil
-		})
+		if _, err := uuid.Parse(reqItem.ProductId); err != nil {
+
+			return nil, appErrors.New(appErrors.KindInvalidInput, "invalid product id: "+reqItem.ProductId)
+
+		}
+
+		productIDs = append(productIDs, reqItem.ProductId)
 	}
 
-	if err := g.Wait(); err != nil {
+	// دریافت دسته‌جمعی اطلاعات تمام محصولات در یک درخواست gRPC
+	products, err := s.productClient.GetProductsByIDs(ctx, productIDs)
+	if err != nil {
 		return nil, err
+	}
+
+	// یک لیست از اطلاعات دریافت شده از سرویس محصولات میسازیم
+	productMap := make(map[string]struct {
+		Name     string
+		Price    int64
+		IsActive bool
+	}, len(products))
+
+	// در یک حلقه لیست رو پرمیکنیم تا جستجو در آن بر اساس آیدی
+	// سریع تر باشد
+	for _, p := range products {
+		productMap[p.Id] = struct {
+			Name     string
+			Price    int64
+			IsActive bool
+		}{
+			Name:     p.Name,
+			Price:    p.Price,
+			IsActive: p.IsActive,
+		}
+	}
+
+	// ساخت لیست آیتم‌های سفارش دامنه‌ای با قیمت Snapshot شده
+	items := make([]*model.OrderItem, 0, len(reqItems))
+
+	// در این حلقه هم داده های سفارش را اعتبار سنجی میکنیم و هم آیتم های
+	// سفارش را میسازیم
+	for _, reqItem := range reqItems {
+		p, exists := productMap[reqItem.ProductId]
+		if !exists {
+			return nil, appErrors.New(
+				appErrors.KindNotFound,
+				"product not found: "+reqItem.ProductId,
+			)
+		}
+
+		if !p.IsActive {
+			return nil, appErrors.New(
+				appErrors.KindInvalidInput,
+				"product is not active: "+p.Name,
+			)
+		}
+
+		productUUID := uuid.MustParse(reqItem.ProductId)
+		unitPrice := p.Price
+		subtotal := int64(reqItem.Quantity) * unitPrice
+
+		items = append(items, &model.OrderItem{
+			ProductID:   productUUID,
+			ProductName: p.Name,
+			UnitPrice:   unitPrice,
+			Quantity:    reqItem.Quantity,
+			Subtotal:    subtotal,
+		})
 	}
 
 	return items, nil
@@ -236,10 +223,22 @@ func (
 	reason string,
 ) {
 
+	if len(items) == 0 {
+		return
+	}
+
+	// استفاده از context.WithoutCancel برای تضمین
+	// ارسال ایونت حتی در صورت Cancel شدن درخواست اصلی
+	compCtx, cancel := context.WithTimeout(
+		context.WithoutCancel(ctx),
+		10*time.Second,
+	)
+	defer cancel()
+
 	for _, item := range items {
 
 		if err := s.publisher.PublishStockReleaseRequested(
-			ctx,
+			compCtx,
 			item.ProductID,
 			item.Quantity,
 			reason,

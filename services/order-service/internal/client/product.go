@@ -4,41 +4,31 @@ package client
 
 import (
 	"context"
+	"time"
 
-	"pkg/grpcclient"
 	"pkg/grpcerrors"
 	pb "pkg/proto/product"
 )
 
+const defaultRequestTimeout = 3 * time.Second
+
 // یک اینترفیس برای ارتباطات سینک با سرویس محصولات
 type ProductClient interface {
 	GetProduct(ctx context.Context, productID string) (*pb.Product, error)
+
+	GetProductsByIDs(
+		ctx context.Context,
+		productIDs []string,
+	) (
+		[]*pb.Product,
+		error,
+	)
+
 	ReserveStock(ctx context.Context, productID string, quantity int32) error
 }
 
 type productClient struct {
 	client pb.ProductServiceClient
-}
-
-// NewProductClient یک اتصال gRPC به Product Service باز می‌کند.
-// از grpcclient.ClientManager موجود در pkg استفاده می‌شود تا
-// مدیریت اتصال (و بسته‌شدنش هنگام خاموش‌شدن سرویس) یکجا و یکسان
-// با بقیه‌ی جاهایی باشد که به سرویس دیگری وصل می‌شوند
-func NewProductClient(
-	manager *grpcclient.ClientManager,
-	addr string,
-) (
-	ProductClient, error,
-) {
-
-	conn, err := manager.Dial(addr)
-	if err != nil {
-		return nil, err
-	}
-
-	return &productClient{
-		client: pb.NewProductServiceClient(conn),
-	}, nil
 }
 
 // ارسال درخواست به سرویس محصولات برای دریافت اطلاعات یک محصول
@@ -48,6 +38,10 @@ func (c *productClient) GetProduct(
 ) (
 	*pb.Product, error,
 ) {
+
+	// ایجاد یک Timeout دفاعی در صورت عدم وجود Deadline در Context ورودی
+	ctx, cancel := context.WithTimeout(ctx, defaultRequestTimeout)
+	defer cancel()
 
 	product, err := c.client.GetProduct(
 		ctx,
@@ -61,12 +55,45 @@ func (c *productClient) GetProduct(
 	return product, nil
 }
 
+// GetProductsByIDs دریافت دسته‌جمعی اطلاعات چند محصول در یک درخواست
+func (c *productClient) GetProductsByIDs(
+	ctx context.Context,
+	productIDs []string,
+) (
+	[]*pb.Product,
+	error,
+) {
+
+	// اعتبار سنجی ورودی
+	if len(productIDs) == 0 {
+		return nil, nil
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, defaultRequestTimeout)
+	defer cancel()
+
+	resp, err := c.client.GetProductsByIDs(
+		ctx,
+		&pb.GetProductsByIDsRequest{
+			Ids: productIDs,
+		},
+	)
+	if err != nil {
+		return nil, grpcerrors.ToAppError(err)
+	}
+
+	return resp.GetProducts(), nil
+}
+
 // ارسال درخواست افزودن یک رزرو به سرویس محصولات
 func (c *productClient) ReserveStock(
 	ctx context.Context,
 	productID string,
 	quantity int32,
 ) error {
+
+	ctx, cancel := context.WithTimeout(ctx, defaultRequestTimeout)
+	defer cancel()
 
 	_, err := c.client.ReserveStock(
 		ctx,
@@ -75,5 +102,9 @@ func (c *productClient) ReserveStock(
 			Quantity:  quantity,
 		})
 
-	return grpcerrors.ToAppError(err)
+	if err != nil {
+		return grpcerrors.ToAppError(err)
+	}
+
+	return nil
 }
