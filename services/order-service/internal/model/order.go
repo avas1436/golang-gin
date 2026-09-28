@@ -40,16 +40,30 @@ type OrderItem struct {
 	ProductName string    `db:"product_name" json:"product_name"`
 	UnitPrice   int64     `db:"unit_price" json:"unit_price"`
 	Quantity    int32     `db:"quantity" json:"quantity"`
-	Subtotal    int64     `db:"sub_total" json:"sub_total"`
+	Subtotal    int64     `db:"subtotal" json:"subtotal"`
 	CreatedAt   time.Time `db:"created_at" json:"created_at"`
+}
+
+// CreateOrderItemInput ورودی‌های اولیه ثبت یک آیتم سفارش
+type CreateOrderItemInput struct {
+	ProductID uuid.UUID
+	Quantity  int32
+}
+
+// CalculateSubtotal محاسبه ارزش یک آیتم در حافظه
+func (item *OrderItem) CalculateSubtotal() int64 {
+	return item.UnitPrice * int64(item.Quantity)
 }
 
 // مجموع تمام آیتم‌های سفارش
 func (o *Order) CalculateTotal() int64 {
-
 	var total int64
 
 	for _, item := range o.Items {
+		// اگر Subtotal هنوز مقداردهی نشده باشد، در حافظه محاسبه می‌شود
+		if item.Subtotal == 0 && item.Quantity > 0 {
+			item.Subtotal = item.CalculateSubtotal()
+		}
 		total += item.Subtotal
 	}
 
