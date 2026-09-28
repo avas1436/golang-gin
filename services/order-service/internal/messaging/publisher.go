@@ -111,3 +111,11 @@ func (p *RabbitMQEventPublisher) PublishStockConfirmRequested(
 		ctx, events.RoutingKeyStockConfirmRequested, event,
 	)
 }
+
+// Close بستن کانال مربوط به Publisher
+func (p *RabbitMQEventPublisher) Close() error {
+	if p == nil || p.publisher == nil {
+		return nil
+	}
+	return p.publisher.Close()
+}

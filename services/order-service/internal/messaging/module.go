@@ -4,6 +4,7 @@ package messaging
 
 import (
 	"context"
+	"log"
 	"order-service/internal/repository"
 	"order-service/internal/service"
 	appErrors "pkg/errors"
@@ -120,17 +121,22 @@ func NewRabbitPublisher(
 	return publisher, nil
 }
 
-// RegisterMessagingLifecycle مدیریت کامل Lifecycle مربوط به Publisher و Consumer در زمان Shutdown
+// RegisterMessagingLifecycle مدیریت شروع Consumer و Shutdown شدن Publisher
 func RegisterMessagingLifecycle(
 	lc fx.Lifecycle,
-	publisher *rabbitmq.Publisher,
+	publisher *RabbitMQEventPublisher,
 	consumer *PaymentEventConsumer,
 ) {
 	lc.Append(
 		fx.Hook{
 			OnStart: func(ctx context.Context) error {
 				go func() {
-					_ = consumer.StartListening(context.Background())
+					if err := consumer.StartListening(context.Background()); err != nil {
+						log.Printf(
+							"order-service: payment consumer stopped with error: %v",
+							err,
+						)
+					}
 				}()
 				return nil
 			},
@@ -145,14 +151,13 @@ var Module = fx.Module(
 	"messaging",
 
 	fx.Provide(
-		NewRabbitPublisher,
 		NewRabbitMQEventPublisher,
 		NewPaymentEventConsumer,
 
-		fx.Annotate(
-			NewRabbitMQEventPublisher,
-			fx.As(new(service.EventPublisher)),
-		),
+		// نگاشت RabbitMQEventPublisher به اینترفیس service.EventPublisher
+		func(p *RabbitMQEventPublisher) service.EventPublisher {
+			return p
+		},
 	),
 
 	fx.Invoke(
