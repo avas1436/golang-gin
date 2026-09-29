@@ -1,4 +1,4 @@
-// services/user-service/internal/repository/refresh_token_repository.go
+// services/user-service/internal/repository/refresh_token.go
 
 package repository
 

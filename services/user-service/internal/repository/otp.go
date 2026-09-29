@@ -1,4 +1,4 @@
-// services/user-service/internal/repository/otp_repository.go
+// services/user-service/internal/repository/otp.go
 
 package repository
 
@@ -208,25 +208,23 @@ func (
 		)
 	}
 
-	// ابتدا چالش را دریافت می‌کنیم تا UserID را داشته باشیم
-	_, err := r.GetChallenge(ctx, challengeID)
+	// حذف چالش و دریافت تعداد کلید حذف شده
+	deletedCount, err := r.client.Del(ctx, r.key(challengeID)).Result()
 	if err != nil {
-		// اگر چالش وجود نداشت، نیازی به حذف نیست
-		if appErrors.GetKind(err) == appErrors.KindNotFound {
-			return nil
-		}
-		return err
-	}
-
-	// حذف چالش
-	if err := r.client.Del(ctx, r.key(challengeID)).Err(); err != nil {
-
 		return appErrors.Wrap(
 			appErrors.KindInternal,
 			err,
-			"failed to delete OTP challenge from Redis",
+			"failed to consume otp challenge",
 		)
+	}
 
+	// اگر تعداد کلید حذف‌شده ۱ نباشد، یعنی کلید قبلاً مصرف شده
+	//  یا منقضی شده است
+	if deletedCount == 0 {
+		return appErrors.New(
+			appErrors.KindInvalidInput,
+			"otp challenge is invalid, expired, or already consumed",
+		)
 	}
 
 	return nil
