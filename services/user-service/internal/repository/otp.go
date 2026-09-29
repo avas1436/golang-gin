@@ -136,7 +136,7 @@ func (
 	return nil
 }
 
-// GetChallenge یک چالش OTP را با ID آن دریافت می‌کند
+// GetChallenge دریافت اطلاعات یک چالش از ردیس.
 func (
 	r *otpRepository,
 ) GetChallenge(

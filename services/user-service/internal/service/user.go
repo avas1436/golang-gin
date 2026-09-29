@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"crypto/subtle"
 	"log"
 	"time"
 
@@ -351,19 +352,21 @@ func (
 		)
 	}
 
+	// دریافت چالش از ذخیره‌ساز که محل ذخیره ردیس است.
 	challenge, err := s.otpRepo.GetChallenge(ctx, challengeID)
 	if err != nil {
 
 		return nil, err
 	}
 
-	if challenge.Code != req.OtpCode {
-
+	// برای جلوگیری از Timing Attack به جای مقایسه مستقیم
+	// challenge.Code != req.OtpCode
+	// از این تابع استاندارد استفاده میکنیم
+	if subtle.ConstantTimeCompare([]byte(challenge.Code), []byte(req.OtpCode)) != 1 {
 		return nil, appErrors.New(
 			appErrors.KindInvalidInput,
 			"invalid otp code",
 		)
-
 	}
 
 	// بلافاصله چالش را حذف می‌کنیم تا درخواست هم‌زمان دوم
