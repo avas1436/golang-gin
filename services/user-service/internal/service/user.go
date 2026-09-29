@@ -140,6 +140,12 @@ func (
 		nil
 }
 
+// یک هش معتبر bcrypt جهت جلوگیری از Timing Attack
+const dummyPasswordHash = "$2a$10$e8T.A0N1E8a1O5r.O4M6e.J9V2O1K1E8a1O5r.O4M6e.J9V2O1K1E"
+
+// پیام یکسان جهت جلوگیری از User Enumeration
+const errInvalidCredentials = "invalid phone number, email, or password"
+
 // Password Login
 func (
 	s *UserService,
@@ -151,9 +157,7 @@ func (
 	error,
 ) {
 
-	// start := time.Now()
-
-	//  اعتبارسنجی ورودی
+	// اعتبارسنجی ورودی
 	if req == nil {
 		return nil, appErrors.New(
 			appErrors.KindInvalidInput,
@@ -175,51 +179,36 @@ func (
 		)
 	}
 
-	// log.Printf("Validation: %s", time.Since(start))
-
-	// start = time.Now()
-
+	// استعلام کاربر از دیتابیس
 	user, err := s.userRepo.GetByEmailOrPhone(ctx, req.Identifier)
+
+	passwordHashToCompare := dummyPasswordHash
+	userFound := true
+
 	if err != nil {
-
 		if appErrors.GetKind(err) == appErrors.KindNotFound {
-
-			// برای امنیت، پیام یکسان می‌دهیم
-			return nil, appErrors.New(
-				appErrors.KindUnauthenticated,
-				"invalid phone number or email",
-			)
-
+			// کاربر پیدا نشد؛ اما بلافاصله خروج نمی‌کنیم تا جلوی Timing Attack گرفته شود
+			userFound = false
+		} else {
+			// خطاهای داخلی دیتابیس
+			return nil, err
 		}
-
-		// خطاهای داخلی
-		return nil, err
+	} else {
+		passwordHashToCompare = user.PasswordHash
 	}
-
-	// log.Printf("GetUser: %s", time.Since(start))
-
-	// start = time.Now()
 
 	// مقایسه رمز عبور
-	if err := auth.ComparePassword(
-		user.PasswordHash,
-		req.Password,
-	); err != nil {
+	// حتماً حتی در صورت عدم وجود کاربر اجرا می‌شود تا زمان پردازش یکسان باشد
+	compareErr := auth.ComparePassword(passwordHashToCompare, req.Password)
 
-		if appErrors.GetKind(err) == appErrors.KindInvalidInput {
-
-			return nil, appErrors.New(
-				appErrors.KindUnauthenticated,
-				"invalid phone number or password",
-			)
-
-		}
-
-		// خطاهای داخلی در مقایسه رمز
-		return nil, err
+	// اگر کاربر وجود نداشت یا رمز اشتباه بود، خروجی و پیام
+	// خطای کاملاً یکسان داده می‌شود
+	if !userFound || compareErr != nil {
+		return nil, appErrors.New(
+			appErrors.KindUnauthenticated,
+			errInvalidCredentials,
+		)
 	}
-
-	// log.Printf("ComparePassword: %s", time.Since(start))
 
 	accessToken, refreshToken, expireIn, err := s.issueTokens(
 		ctx,
