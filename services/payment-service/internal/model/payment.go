@@ -166,7 +166,7 @@ func (p *Payment) CanTransitionTo(next PaymentStatus) bool {
 		return false
 
 	case PaymentStatusPending:
-		// از pending به هر وضعیتی مجاز است
+		// از awaiting به وضعیت‌های نهایی مجاز است
 		return next == PaymentStatusCompleted ||
 			next == PaymentStatusFailed ||
 			next == PaymentStatusCanceled ||
