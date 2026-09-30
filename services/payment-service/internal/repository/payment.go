@@ -238,8 +238,8 @@ func (
             created_at,
             updated_at
         FROM payments
-        WHERE authority = $1
-        LIMIT 1
+        WHERE authority = $1 AND status = 'awaiting'
+		LIMIT 1;
     `
 
 	p := &model.Payment{}
@@ -308,10 +308,12 @@ func (
 			status         = $1,
 			gateway_name   = $2,
 			gateway_ref_id = $3,
-			failure_reason = $4,
-			metadata       = $5,
-			updated_at     = $6
-		WHERE id = $7 AND status = 'pending'
+			authority      = $4,
+			redirect_url   = $5,
+			failure_reason = $6,
+			metadata       = $7,
+			updated_at     = $8
+		WHERE id = $9 AND status = 'pending';
 	`
 
 	result, err := r.db.Exec(
@@ -320,6 +322,8 @@ func (
 		payment.Status,
 		payment.GatewayName,
 		payment.GatewayRefID,
+		payment.Authority,
+		payment.RedirectURL,
 		payment.FailureReason,
 		payment.Metadata,
 		payment.UpdatedAt,
