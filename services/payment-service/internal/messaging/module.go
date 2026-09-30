@@ -15,7 +15,7 @@ import (
 	"go.uber.org/fx"
 )
 
-// NewRabbitPublisher یک Publisher اختصاصی با Channel مجزا برای سرویس پرداخت می‌سازد
+// NewRabbitPublisher یک Publisher اختصاصی متصل به Exchange رویدادهای پرداخت می‌سازد
 func NewRabbitPublisher(
 	conn *rabbitmq.Connection,
 ) (*rabbitmq.Publisher, error) {
@@ -30,7 +30,7 @@ func NewRabbitPublisher(
 
 	publisher, err := rabbitmq.NewPublisher(
 		ch,
-		events.ExchangeOrderEvents,
+		events.ExchangePaymentEvents, // <--- اصلاح شد: Exchange اختصاصی رویدادهای پرداخت
 	)
 	if err != nil {
 		_ = ch.Close()
@@ -50,31 +50,38 @@ func RegisterMessagingLifecycle(
 	publisher *RabbitMQEventPublisher,
 	consumer *OrderEventConsumer,
 ) {
-	// استفاده از Background Context ماندگار به همراه Cancel برای لغو اجرا در زمان Shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 
-	lc.Append(fx.Hook{
-		OnStart: func(startCtx context.Context) error {
-			go func() {
-				log.Println("payment-service: starting order event consumer...")
-				if err := consumer.StartListening(ctx); err != nil {
-					log.Printf(
-						"payment-service: order event consumer stopped with error: %v",
-						err,
+	lc.Append(
+		fx.Hook{
+			OnStart: func(startCtx context.Context) error {
+				go func() {
+					log.Println(
+						"payment-service: starting order event consumer...",
 					)
+					if err := consumer.StartListening(ctx); err != nil {
+						log.Printf(
+							"payment-service: order event consumer stopped with error: %v",
+							err,
+						)
+					}
+				}()
+				return nil
+			},
+			OnStop: func(stopCtx context.Context) error {
+				log.Println(
+					"payment-service: stopping messaging lifecycle...",
+				)
+				cancel()
+				if publisher != nil {
+					_ = publisher.Close()
 				}
-			}()
-			return nil
-		},
-		OnStop: func(stopCtx context.Context) error {
-			log.Println("payment-service: stopping messaging lifecycle...")
-			cancel()
-			if publisher != nil {
-				_ = publisher.Close()
-			}
-			return nil
-		},
-	})
+				if consumer != nil {
+					_ = consumer.Close()
+				}
+				return nil
+			},
+		})
 }
 
 var Module = fx.Module(
@@ -83,10 +90,9 @@ var Module = fx.Module(
 	fx.Provide(
 		NewRabbitPublisher,
 		NewRabbitMQEventPublisher,
-		fx.Annotate(
-			NewRabbitMQEventPublisher,
-			fx.As(new(service.EventPublisher)),
-		),
+		func(p *RabbitMQEventPublisher) service.EventPublisher {
+			return p
+		},
 		NewOrderEventConsumer,
 	),
 

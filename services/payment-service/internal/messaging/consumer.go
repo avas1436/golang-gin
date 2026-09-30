@@ -115,3 +115,11 @@ func (c *OrderEventConsumer) handleOrderCreated(
 		event.TotalAmount,
 	)
 }
+
+// Close بستن کانال مصرف‌کننده
+func (c *OrderEventConsumer) Close() error {
+	if c == nil || c.consumerCreated == nil {
+		return nil
+	}
+	return c.consumerCreated.Close()
+}
