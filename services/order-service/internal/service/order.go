@@ -111,7 +111,7 @@ func (
 		if updateErr := s.orderRepo.UpdateStatus(
 			ctx,
 			order.ID,
-			"failed",
+			model.OrderStatusFailed,
 		); updateErr != nil {
 
 			log.Printf(
