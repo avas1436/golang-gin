@@ -7,6 +7,7 @@ import (
 	"log"
 	"order-service/internal/repository"
 	"order-service/internal/service"
+	appErrors "pkg/errors"
 
 	"pkg/events"
 
@@ -77,6 +78,35 @@ func NewPaymentEventConsumer(
 	}, nil
 }
 
+// NewRabbitPublisher یک Publisher اختصاصی برای order-service روی Exchange اختصاصی order_events می‌سازد
+func NewRabbitPublisher(
+	conn *rabbitmq.Connection,
+) (*rabbitmq.Publisher, error) {
+	ch, err := conn.Channel()
+	if err != nil {
+		return nil, appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to open channel for order publisher",
+		)
+	}
+
+	publisher, err := rabbitmq.NewPublisher(
+		ch,
+		events.ExchangeOrderEvents, // Exchange اختصاصی order-service
+	)
+	if err != nil {
+		_ = ch.Close()
+		return nil, appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to initialize order event publisher",
+		)
+	}
+
+	return publisher, nil
+}
+
 // NewRabbitMQEventPublisher یک Event Publisher می‌سازد.
 func NewRabbitMQEventPublisher(
 	publisher *rabbitmq.Publisher,
@@ -85,30 +115,6 @@ func NewRabbitMQEventPublisher(
 	return &RabbitMQEventPublisher{
 		publisher: publisher,
 	}
-}
-
-func NewRabbitPublisher(
-	conn *rabbitmq.Connection,
-) (
-	*rabbitmq.Publisher,
-	error,
-) {
-
-	ch, err := conn.Channel()
-	if err != nil {
-		return nil, err
-	}
-
-	publisher, err := rabbitmq.NewPublisher(
-		ch,
-		events.ExchangeOrderEvents,
-	)
-	if err != nil {
-		_ = ch.Close()
-		return nil, err
-	}
-
-	return publisher, nil
 }
 
 // RegisterMessagingLifecycle مدیریت شروع Consumer و Shutdown شدن Publisher
@@ -141,6 +147,7 @@ var Module = fx.Module(
 	"messaging",
 
 	fx.Provide(
+		NewRabbitPublisher,
 		NewRabbitMQEventPublisher,
 		NewPaymentEventConsumer,
 
