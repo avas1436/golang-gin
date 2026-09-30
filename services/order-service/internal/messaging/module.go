@@ -16,9 +16,16 @@ import (
 	"pkg/rabbitmq"
 )
 
+// صف های هر قسمت کاملا از هم جدا هستند
 const (
-	paymentEventsQueue = "order.payment_events.queue"
-	paymentExchange    = "payment_events"
+	// صف مصرف کننده رویداد تکمیل سفارش
+	paymentCompletedQueue = "order.payment_completed.queue"
+
+	// صف مصرف کننده رویداد شکست سفارش
+	paymentFailedQueue = "order.payment_failed.queue"
+
+	// اتصال به محل تبادل پیام سیستم پرداخت
+	paymentExchange = "payment_events"
 )
 
 func NewPaymentEventConsumer(
@@ -51,7 +58,7 @@ func NewPaymentEventConsumer(
 
 	// ثبت صف و اتصال آن به Exchange رویدادهای پرداخت (Binding)
 	if err := consumer.BindQueue(
-		paymentEventsQueue,
+		paymentCompletedQueue,
 		paymentExchange,
 		events.RoutingKeyPaymentCompleted,
 	); err != nil {
@@ -66,7 +73,7 @@ func NewPaymentEventConsumer(
 	}
 
 	if err := consumer.BindQueue(
-		paymentEventsQueue,
+		paymentFailedQueue,
 		paymentExchange,
 		events.RoutingKeyPaymentFailed,
 	); err != nil {

@@ -145,7 +145,7 @@ func (
 					unnest($3::text[]), 
 					unnest($4::bigint[]), 
 					unnest($5::int[])
-				RETURNING id, product_id, created_at
+				RETURNING id, product_id, subtotal, created_at
 			`
 
 				rows, err := tx.Query(

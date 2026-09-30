@@ -1,4 +1,4 @@
-// services/user-service/internal/repository/user_repository.go
+// services/user-service/internal/repository/user.go
 
 package repository
 

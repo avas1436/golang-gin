@@ -22,51 +22,71 @@ type PaymentEventConsumer struct {
 	publisher *RabbitMQEventPublisher
 }
 
-// StartListening استماع رویدادهای نتایج پرداخت از RabbitMQ
+// StartListening استماع همزمان رویدادهای پرداخت موفق و ناموفق از صف‌های مجزا
 func (c *PaymentEventConsumer) StartListening(ctx context.Context) error {
+	errCh := make(chan error, 2)
 
-	return c.consumer.Consume(
-		ctx,
-		paymentEventsQueue,
-		func(ctx context.Context, body []byte) error {
-			var rawHeader struct {
-				Reason string `json:"reason"`
-			}
+	// ۱. شنود صف پرداخت موفق
+	go func() {
+		err := c.consumer.Consume(
+			ctx,
+			paymentCompletedQueue,
+			func(ctx context.Context, body []byte) error {
+				var event events.PaymentCompleted
+				if err := json.Unmarshal(body, &event); err != nil {
+					return appErrors.Wrap(
+						appErrors.KindInvalidInput,
+						err,
+						"failed to unmarshal PaymentCompleted event",
+					)
+				}
+				return c.handlePaymentSucceeded(ctx, event)
+			},
+		)
+		if err != nil {
+			errCh <- appErrors.Wrap(
+				appErrors.KindInternal,
+				err,
+				"error in payment completed consumer loop",
+			)
+		}
+	}()
 
-			if err := json.Unmarshal(body, &rawHeader); err != nil {
-				log.Printf("order-service: failed to parse payment event header: %v", err)
-				return appErrors.Wrap(
-					appErrors.KindInvalidInput,
-					err,
-					"failed to unmarshal payment event header",
-				)
-			}
-
-			// اگر فیلد Reason وجود داشته باشد، رویداد شکست پرداخت است
-			if rawHeader.Reason != "" {
-				var failedEvent events.PaymentFailed
-				if err := json.Unmarshal(body, &failedEvent); err != nil {
+	// ۲. شنود صف پرداخت ناموفق
+	go func() {
+		err := c.consumer.Consume(
+			ctx,
+			paymentFailedQueue,
+			func(ctx context.Context, body []byte) error {
+				var event events.PaymentFailed
+				if err := json.Unmarshal(body, &event); err != nil {
 					return appErrors.Wrap(
 						appErrors.KindInvalidInput,
 						err,
 						"failed to unmarshal PaymentFailed event",
 					)
 				}
-				return c.handlePaymentFailed(ctx, failedEvent)
-			}
+				return c.handlePaymentFailed(ctx, event)
+			},
+		)
+		if err != nil {
+			errCh <- appErrors.Wrap(
+				appErrors.KindInternal,
+				err,
+				"error in payment failed consumer loop",
+			)
+		}
+	}()
 
-			// در غیر این صورت رویداد پرداخت موفق است
-			var succeededEvent events.PaymentCompleted
-			if err := json.Unmarshal(body, &succeededEvent); err != nil {
-				return appErrors.Wrap(
-					appErrors.KindInvalidInput,
-					err,
-					"failed to unmarshal PaymentSucceeded event",
-				)
-			}
-			return c.handlePaymentSucceeded(ctx, succeededEvent)
-		},
-	)
+	select {
+
+	case <-ctx.Done():
+		return ctx.Err()
+
+	case err := <-errCh:
+		return err
+
+	}
 }
 
 func (
@@ -83,17 +103,26 @@ func (
 		model.OrderStatusConfirmed,
 	); err != nil {
 
-		log.Printf(
-			"order-service: failed to update order status to confirmed for order %s: %v",
-			event.OrderID,
-			err,
-		)
+		// اگر وضعیت از قبل تغییر کرده است (Redelivery / Retry بعد از Crash)،
+		// خطا را نادیده گرفته و برای حفظ یکپارچگی Saga به مرحله بعد می‌رویم.
+		if appErrors.GetKind(err) == appErrors.KindAlreadyExists {
+			log.Printf(
+				"order-service: order %s is already processed (status not pending), continuing to stock confirmation for idempotency recovery",
+				event.OrderID,
+			)
+		} else {
+			log.Printf(
+				"order-service: failed to update order status to confirmed for order %s: %v",
+				event.OrderID,
+				err,
+			)
 
-		return appErrors.Wrap(
-			appErrors.KindInternal,
-			err,
-			"failed to update order status to confirmed",
-		)
+			return appErrors.Wrap(
+				appErrors.KindInternal,
+				err,
+				"failed to update order status to confirmed",
+			)
+		}
 	}
 
 	// ۲. دریافت آیتم‌های سفارش جهت قطعی کردن کسر موجودی در Product Service
@@ -125,6 +154,14 @@ func (
 				item.ProductID,
 				err,
 			)
+
+			// در صورت بروز خطا در انتشار رویداد، خطا برمی‌گردانیم
+			// تا پیام NACK/Requeue شود
+			return appErrors.Wrap(
+				appErrors.KindInternal,
+				err,
+				"failed to publish stock confirm requested event",
+			)
 		}
 	}
 
@@ -145,17 +182,26 @@ func (
 		model.OrderStatusCancelled,
 	); err != nil {
 
-		log.Printf(
-			"order-service: failed to update order status to cancelled for order %s: %v",
-			event.OrderID,
-			err,
-		)
+		// اگر وضعیت از قبل تغییر کرده است (Redelivery / Retry بعد از Crash)،
+		// خطا را نادیده گرفته و برای حفظ یکپارچگی Saga به مرحله بعد می‌رویم.
+		if appErrors.GetKind(err) == appErrors.KindAlreadyExists {
+			log.Printf(
+				"order-service: order %s is already processed (status not pending), continuing to stock release for idempotency recovery",
+				event.OrderID,
+			)
+		} else {
+			log.Printf(
+				"order-service: failed to update order status to cancelled for order %s: %v",
+				event.OrderID,
+				err,
+			)
 
-		return appErrors.Wrap(
-			appErrors.KindInternal,
-			err,
-			"failed to update order status to cancelled",
-		)
+			return appErrors.Wrap(
+				appErrors.KindInternal,
+				err,
+				"failed to update order status to cancelled",
+			)
+		}
 	}
 
 	// ۲. دریافت آیتم‌های سفارش جهت آزادسازی موجودی رزرو شده در Product Service
@@ -186,6 +232,14 @@ func (
 				"order-service: failed to publish stock release for product %s: %v",
 				item.ProductID,
 				err,
+			)
+
+			// در صورت بروز خطا در انتشار رویداد، خطا برمی‌گردانیم
+			//  تا پیام NACK/Requeue شود
+			return appErrors.Wrap(
+				appErrors.KindInternal,
+				err,
+				"failed to publish stock release requested event",
 			)
 
 		}

@@ -1,9 +1,10 @@
-// services/user-service/internal/service/user_service.go
+// services/user-service/internal/service/user.go
 
 package service
 
 import (
 	"context"
+	"crypto/subtle"
 	"log"
 	"time"
 
@@ -16,8 +17,6 @@ import (
 	"github.com/google/uuid"
 )
 
-const otpTTL = 2 * time.Minute
-
 type UserService struct {
 	userRepo         repository.UserRepository
 	otpRepo          repository.OTPRepository
@@ -27,55 +26,6 @@ type UserService struct {
 
 	tokens          auth.TokenManager
 	refreshTokenTTL time.Duration
-}
-
-func (
-	s *UserService,
-) issueTokens(
-	ctx context.Context,
-	user *model.User,
-) (
-	access_token string,
-	refresh_token string,
-	expires_in int64,
-	err error,
-) {
-
-	// start := time.Now()
-
-	accessToken, err := s.tokens.GenerateAccessToken(
-		user.ID.String(),
-		string(user.Role),
-	)
-	if err != nil {
-		return "", "", 0, err
-	}
-
-	// log.Printf("GenerateAccessToken: %s", time.Since(start))
-
-	// start = time.Now()
-
-	refreshToken, err := s.tokens.GenerateRefreshToken()
-	if err != nil {
-		return "", "", 0, err
-	}
-
-	// log.Printf("CreateRefreshToken: %s", time.Since(start))
-
-	rt := &model.RefreshToken{
-		UserID:    user.ID,
-		TokenHash: s.tokens.HashRefreshToken(refreshToken),
-		ExpiresAt: time.Now().Add(s.refreshTokenTTL),
-	}
-
-	if err := s.refreshTokenRepo.Create(ctx, rt); err != nil {
-		return "", "", 0, err
-	}
-
-	return accessToken,
-		refreshToken,
-		int64(s.tokens.AccessTokenTTL().Seconds()),
-		nil
 }
 
 // Register
@@ -150,9 +100,7 @@ func (
 	error,
 ) {
 
-	// start := time.Now()
-
-	//  اعتبارسنجی ورودی
+	// اعتبارسنجی ورودی
 	if req == nil {
 		return nil, appErrors.New(
 			appErrors.KindInvalidInput,
@@ -174,51 +122,36 @@ func (
 		)
 	}
 
-	// log.Printf("Validation: %s", time.Since(start))
-
-	// start = time.Now()
-
+	// استعلام کاربر از دیتابیس
 	user, err := s.userRepo.GetByEmailOrPhone(ctx, req.Identifier)
+
+	passwordHashToCompare := dummyPasswordHash
+	userFound := true
+
 	if err != nil {
-
 		if appErrors.GetKind(err) == appErrors.KindNotFound {
-
-			// برای امنیت، پیام یکسان می‌دهیم
-			return nil, appErrors.New(
-				appErrors.KindUnauthenticated,
-				"invalid phone number or email",
-			)
-
+			// کاربر پیدا نشد؛ اما بلافاصله خروج نمی‌کنیم تا جلوی Timing Attack گرفته شود
+			userFound = false
+		} else {
+			// خطاهای داخلی دیتابیس
+			return nil, err
 		}
-
-		// خطاهای داخلی
-		return nil, err
+	} else {
+		passwordHashToCompare = user.PasswordHash
 	}
-
-	// log.Printf("GetUser: %s", time.Since(start))
-
-	// start = time.Now()
 
 	// مقایسه رمز عبور
-	if err := auth.ComparePassword(
-		user.PasswordHash,
-		req.Password,
-	); err != nil {
+	// حتماً حتی در صورت عدم وجود کاربر اجرا می‌شود تا زمان پردازش یکسان باشد
+	compareErr := auth.ComparePassword(passwordHashToCompare, req.Password)
 
-		if appErrors.GetKind(err) == appErrors.KindInvalidInput {
-
-			return nil, appErrors.New(
-				appErrors.KindUnauthenticated,
-				"invalid phone number or password",
-			)
-
-		}
-
-		// خطاهای داخلی در مقایسه رمز
-		return nil, err
+	// اگر کاربر وجود نداشت یا رمز اشتباه بود، خروجی و پیام
+	// خطای کاملاً یکسان داده می‌شود
+	if !userFound || compareErr != nil {
+		return nil, appErrors.New(
+			appErrors.KindUnauthenticated,
+			"invalid phone number, email, or password",
+		)
 	}
-
-	// log.Printf("ComparePassword: %s", time.Since(start))
 
 	accessToken, refreshToken, expireIn, err := s.issueTokens(
 		ctx,
@@ -335,10 +268,24 @@ func (
 ) {
 
 	// اعتبار سنجی داده ورودی
-	if req == nil || req.OtpChallengeId == "" || req.OtpCode == "" {
+	if req == nil {
 		return nil, appErrors.New(
 			appErrors.KindInvalidInput,
-			"challenge id and code are required",
+			"verify otp request cannot be nil",
+		)
+	}
+
+	if req.OtpChallengeId == "" {
+		return nil, appErrors.New(
+			appErrors.KindInvalidInput,
+			"challenge id is required",
+		)
+	}
+
+	if req.OtpCode == "" {
+		return nil, appErrors.New(
+			appErrors.KindInvalidInput,
+			"code is required",
 		)
 	}
 
@@ -351,25 +298,30 @@ func (
 		)
 	}
 
+	// دریافت چالش از ذخیره‌ساز که محل ذخیره ردیس است.
 	challenge, err := s.otpRepo.GetChallenge(ctx, challengeID)
 	if err != nil {
 
 		return nil, err
 	}
 
-	if challenge.Code != req.OtpCode {
-
+	// برای جلوگیری از Timing Attack به جای مقایسه مستقیم
+	// challenge.Code != req.OtpCode
+	// از این تابع استاندارد استفاده میکنیم
+	if subtle.ConstantTimeCompare([]byte(challenge.Code), []byte(req.OtpCode)) != 1 {
 		return nil, appErrors.New(
 			appErrors.KindInvalidInput,
 			"invalid otp code",
 		)
-
 	}
 
+	// بلافاصله چالش را حذف می‌کنیم تا درخواست هم‌زمان دوم
+	// نتواند از آن استفاده کند
 	if err := s.otpRepo.DeleteChallenge(ctx, challengeID); err != nil {
 		return nil, err
 	}
 
+	// پس از اطمینان از حذف چالش، کاربر را دریافت و توکن صادر می‌کنیم
 	user, err := s.userRepo.GetByID(ctx, challenge.UserID)
 	if err != nil {
 		return nil, err
@@ -401,7 +353,14 @@ func (
 ) {
 
 	// اعتبار سنجی
-	if req == nil || req.RefreshToken == "" {
+	if req == nil {
+		return nil, appErrors.New(
+			appErrors.KindInvalidInput,
+			"refresh token request cannot be nil",
+		)
+	}
+
+	if req.RefreshToken == "" {
 		return nil, appErrors.New(
 			appErrors.KindInvalidInput,
 			"refresh token is required",
@@ -410,12 +369,13 @@ func (
 
 	tokenHash := s.tokens.HashRefreshToken(req.RefreshToken)
 
+	// استعلام توکن
 	rt, err := s.refreshTokenRepo.GetByTokenHash(ctx, tokenHash)
 	if err != nil {
 
 		if appErrors.GetKind(err) == appErrors.KindNotFound {
 			return nil, appErrors.New(
-				appErrors.KindNotFound,
+				appErrors.KindUnauthenticated,
 				"refresh token is invalid, expired, or already used",
 			)
 		}
@@ -423,7 +383,7 @@ func (
 		return nil, err
 	}
 
-	// استفاده از متد ساختار رفرش توکن برای اعتبار سنجی آن
+	// بررسی انقضا و باطل‌نشدن در مموری
 	if !rt.IsValid() {
 		return nil, appErrors.New(
 			appErrors.KindUnauthenticated,
@@ -431,12 +391,16 @@ func (
 		)
 	}
 
-	user, err := s.userRepo.GetByID(ctx, rt.UserID)
-	if err != nil {
+	// ابطال اتمیک در دیتابیس پیش از خواندن کاربر و صدور توکن
+	// در صورت درخواست هم‌زمان، فقط یکی از
+	// درخواست‌ها شرط WHERE revoked = false را برآورده کرده و موفق می‌شود
+	if err := s.refreshTokenRepo.Revoke(ctx, rt.ID); err != nil {
 		return nil, err
 	}
 
-	if err := s.refreshTokenRepo.Revoke(ctx, rt.ID); err != nil {
+	// پس از موفقیت در ابطال اتمیک، کاربر دریافت و توکن‌های جدید صادر می‌شوند
+	user, err := s.userRepo.GetByID(ctx, rt.UserID)
+	if err != nil {
 		return nil, err
 	}
 
@@ -535,9 +499,8 @@ func (
 		return nil, err
 	}
 
-	if err := s.refreshTokenRepo.Revoke(ctx, rt.ID); err != nil {
-		return nil, err
-	}
+	// حتی اگر قبلاً باطل شده باشد، خطا نادیده گرفته می‌شود
+	_ = s.refreshTokenRepo.Revoke(ctx, rt.ID)
 
 	return &pb.LogoutResponse{}, nil
 }

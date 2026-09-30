@@ -1,4 +1,4 @@
-// services/user-service/internal/repository/refresh_token_repository.go
+// services/user-service/internal/repository/refresh_token.go
 
 package repository
 
@@ -201,9 +201,13 @@ func (
 		)
 	}
 
-	query := `UPDATE refresh_tokens SET revoked = true WHERE id = $1`
+	query := `
+		UPDATE refresh_tokens
+		SET revoked = true
+		WHERE id = $1 AND revoked = false
+	`
 
-	tag, err := r.db.Exec(ctx, query, id)
+	result, err := r.db.Exec(ctx, query, id)
 
 	if err != nil {
 
@@ -215,7 +219,7 @@ func (
 
 	}
 
-	if tag.RowsAffected() == 0 {
+	if result.RowsAffected() == 0 {
 
 		return appErrors.New(
 			appErrors.KindNotFound,
