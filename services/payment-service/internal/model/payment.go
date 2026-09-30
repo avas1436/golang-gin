@@ -16,7 +16,7 @@ const (
 	PaymentStatusPending         PaymentStatus = "pending"
 	PaymentStatusCompleted       PaymentStatus = "completed"
 	PaymentStatusFailed          PaymentStatus = "failed"
-	PaymentStatusCanceled        PaymentStatus = "canceled"
+	PaymentStatusCanceled        PaymentStatus = "cancelled"
 	PaymentStatusRefunded        PaymentStatus = "refunded"
 	PaymentStatusExpired         PaymentStatus = "expired"
 	PaymentStatusAwaitingPayment PaymentStatus = "awaiting"

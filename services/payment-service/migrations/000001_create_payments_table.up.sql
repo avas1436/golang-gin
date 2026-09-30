@@ -18,9 +18,10 @@ CREATE TABLE IF NOT EXISTS payments (
                     CHECK (
                         status IN (
                             'pending',
+                            'awaiting',
                             'completed',
                             'failed',
-                            'canceled',
+                            'cancelled',
                             'refunded',
                             'expired'
                         )
@@ -40,7 +41,7 @@ CREATE TABLE IF NOT EXISTS payments (
 -- فقط یک پرداخت pending/completed برای هر سفارش
 CREATE UNIQUE INDEX IF NOT EXISTS uq_payments_single_active_order
 ON payments (order_id)
-WHERE status IN ('pending', 'completed');
+WHERE status IN ('pending', 'awaiting', 'completed');
 
 -- reference درگاه باید idempotent باشد
 CREATE UNIQUE INDEX uq_payments_gateway_ref
