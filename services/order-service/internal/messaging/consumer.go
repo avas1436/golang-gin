@@ -7,20 +7,104 @@ import (
 	"encoding/json"
 	"log"
 
+	"github.com/google/uuid"
+
 	appErrors "pkg/errors"
 	"pkg/events"
 	"pkg/rabbitmq"
 
-	"order-service/internal/model"
-	"order-service/internal/repository"
+	"order-service/internal/service"
 )
 
 // PaymentEventConsumer مسئول دریافت و پردازش رویدادهای پرداخت و تکمیل Saga
 type PaymentEventConsumer struct {
 	consumerCompleted *rabbitmq.Consumer
 	consumerFailed    *rabbitmq.Consumer
-	orderRepo         repository.OrderRepository
-	publisher         *RabbitMQEventPublisher
+	orderService      *service.OrderService
+}
+
+func NewPaymentEventConsumer(
+	conn *rabbitmq.Connection,
+	orderService *service.OrderService,
+) (
+	*PaymentEventConsumer,
+	error,
+) {
+
+	// ۱. کانال اختصاصی برای صف پرداخت موفق
+	chCompleted, err := conn.Channel()
+	if err != nil {
+		return nil, appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to open channel for payment completed consumer",
+		)
+	}
+
+	consumerCompleted, err := rabbitmq.NewConsumer(chCompleted)
+	if err != nil {
+		_ = chCompleted.Close()
+		return nil, appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to initialize payment completed consumer",
+		)
+	}
+
+	if err := consumerCompleted.BindQueue(
+		events.QueueOrderPaymentCompleted,
+		events.ExchangeOrderEvents,
+		events.RoutingKeyPaymentCompleted,
+	); err != nil {
+		_ = chCompleted.Close()
+		return nil, appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to bind queue to payment completed routing key",
+		)
+	}
+
+	// ۲. کانال اختصاصی برای صف پرداخت ناموفق
+	chFailed, err := conn.Channel()
+	if err != nil {
+		_ = chCompleted.Close()
+		return nil, appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to open channel for payment failed consumer",
+		)
+	}
+
+	consumerFailed, err := rabbitmq.NewConsumer(chFailed)
+	if err != nil {
+		_ = chCompleted.Close()
+		_ = chFailed.Close()
+		return nil, appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to initialize payment failed consumer",
+		)
+	}
+
+	if err := consumerFailed.BindQueue(
+		events.QueueOrderPaymentFailed,
+		events.ExchangeOrderEvents,
+		events.RoutingKeyPaymentFailed,
+	); err != nil {
+		_ = chCompleted.Close()
+		_ = chFailed.Close()
+		return nil, appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to bind queue to payment failed routing key",
+		)
+	}
+
+	return &PaymentEventConsumer{
+		consumerCompleted: consumerCompleted,
+		consumerFailed:    consumerFailed,
+		orderService:      orderService,
+	}, nil
 }
 
 // StartListening استماع همزمان رویدادهای پرداخت موفق و ناموفق از صف‌های مجزا
@@ -32,17 +116,7 @@ func (c *PaymentEventConsumer) StartListening(ctx context.Context) error {
 		err := c.consumerCompleted.Consume(
 			ctx,
 			events.QueueOrderPaymentCompleted,
-			func(ctx context.Context, body []byte) error {
-				var event events.PaymentCompleted
-				if err := json.Unmarshal(body, &event); err != nil {
-					return appErrors.Wrap(
-						appErrors.KindInvalidInput,
-						err,
-						"failed to unmarshal PaymentCompleted event",
-					)
-				}
-				return c.handlePaymentSucceeded(ctx, event)
-			},
+			c.handlePaymentCompleted,
 		)
 		if err != nil {
 			errCh <- appErrors.Wrap(
@@ -58,17 +132,7 @@ func (c *PaymentEventConsumer) StartListening(ctx context.Context) error {
 		err := c.consumerFailed.Consume(
 			ctx,
 			events.QueueOrderPaymentFailed,
-			func(ctx context.Context, body []byte) error {
-				var event events.PaymentFailed
-				if err := json.Unmarshal(body, &event); err != nil {
-					return appErrors.Wrap(
-						appErrors.KindInvalidInput,
-						err,
-						"failed to unmarshal PaymentFailed event",
-					)
-				}
-				return c.handlePaymentFailed(ctx, event)
-			},
+			c.handlePaymentFailed,
 		)
 		if err != nil {
 			errCh <- appErrors.Wrap(
@@ -90,161 +154,64 @@ func (c *PaymentEventConsumer) StartListening(ctx context.Context) error {
 	}
 }
 
-func (
-	c *PaymentEventConsumer,
-) handlePaymentSucceeded(
+func (c *PaymentEventConsumer) handlePaymentCompleted(
 	ctx context.Context,
-	event events.PaymentCompleted,
+	body []byte,
 ) error {
-
-	// ۱. تغییر وضعیت سفارش به Confirmed در دیتابیس
-	if err := c.orderRepo.UpdateStatus(
-		ctx,
-		event.OrderID,
-		model.OrderStatusConfirmed,
-	); err != nil {
-
-		// اگر وضعیت از قبل تغییر کرده است (Redelivery / Retry بعد از Crash)،
-		// خطا را نادیده گرفته و برای حفظ یکپارچگی Saga به مرحله بعد می‌رویم.
-		if appErrors.GetKind(err) == appErrors.KindAlreadyExists {
-			log.Printf(
-				"order-service: order %s is already processed (status not pending), continuing to stock confirmation for idempotency recovery",
-				event.OrderID,
-			)
-		} else {
-			log.Printf(
-				"order-service: failed to update order status to confirmed for order %s: %v",
-				event.OrderID,
-				err,
-			)
-
-			return appErrors.Wrap(
-				appErrors.KindInternal,
-				err,
-				"failed to update order status to confirmed",
-			)
-		}
-	}
-
-	// ۲. دریافت آیتم‌های سفارش جهت قطعی کردن کسر موجودی در Product Service
-	order, err := c.orderRepo.GetByID(ctx, event.OrderID)
-	if err != nil {
+	var event events.PaymentCompleted
+	if err := json.Unmarshal(body, &event); err != nil {
 		log.Printf(
-			"order-service: failed to fetch order %s: %v",
-			event.OrderID,
+			"order-service: failed to unmarshal PaymentCompleted event: %v",
 			err,
 		)
+		// Poison message: برای جلوگیری از مسدود شدن صف (Infinite Requeue) خطا نادیده گرفته شده و ACK می‌شود
+		return nil
+	}
 
-		return appErrors.Wrap(
-			appErrors.KindInternal,
-			err,
-			"failed to fetch order details for stock confirmation",
+	if event.OrderID == uuid.Nil {
+		log.Printf(
+			"order-service: received PaymentCompleted event with empty order_id",
 		)
+		return nil
 	}
 
-	for _, item := range order.Items {
-		if err := c.publisher.PublishStockConfirmRequested(
-			ctx,
-			order.ID,
-			item.ProductID,
-			item.Quantity,
-		); err != nil {
-
-			log.Printf(
-				"order-service: failed to publish stock confirm for product %s: %v",
-				item.ProductID,
-				err,
-			)
-
-			// در صورت بروز خطا در انتشار رویداد، خطا برمی‌گردانیم
-			// تا پیام NACK/Requeue شود
-			return appErrors.Wrap(
-				appErrors.KindInternal,
-				err,
-				"failed to publish stock confirm requested event",
-			)
-		}
-	}
-
-	return nil
+	return c.orderService.HandlePaymentSucceeded(ctx, event)
 }
 
-func (
-	c *PaymentEventConsumer,
-) handlePaymentFailed(
+func (c *PaymentEventConsumer) handlePaymentFailed(
 	ctx context.Context,
-	event events.PaymentFailed,
+	body []byte,
 ) error {
-
-	// ۱. تغییر وضعیت سفارش به Cancelled در دیتابیس
-	if err := c.orderRepo.UpdateStatus(
-		ctx,
-		event.OrderID,
-		model.OrderStatusCancelled,
-	); err != nil {
-
-		// اگر وضعیت از قبل تغییر کرده است (Redelivery / Retry بعد از Crash)،
-		// خطا را نادیده گرفته و برای حفظ یکپارچگی Saga به مرحله بعد می‌رویم.
-		if appErrors.GetKind(err) == appErrors.KindAlreadyExists {
-			log.Printf(
-				"order-service: order %s is already processed (status not pending), continuing to stock release for idempotency recovery",
-				event.OrderID,
-			)
-		} else {
-			log.Printf(
-				"order-service: failed to update order status to cancelled for order %s: %v",
-				event.OrderID,
-				err,
-			)
-
-			return appErrors.Wrap(
-				appErrors.KindInternal,
-				err,
-				"failed to update order status to cancelled",
-			)
-		}
-	}
-
-	// ۲. دریافت آیتم‌های سفارش جهت آزادسازی موجودی رزرو شده در Product Service
-	order, err := c.orderRepo.GetByID(ctx, event.OrderID)
-	if err != nil {
+	var event events.PaymentFailed
+	if err := json.Unmarshal(body, &event); err != nil {
 		log.Printf(
-			"order-service: failed to fetch order %s: %v",
-			event.OrderID,
+			"order-service: failed to unmarshal PaymentFailed event: %v",
 			err,
 		)
+		// Poison message: برای جلوگیری از مسدود شدن صف (Infinite Requeue) خطا نادیده گرفته شده و ACK می‌شود
+		return nil
+	}
 
-		return appErrors.Wrap(
-			appErrors.KindInternal,
-			err,
-			"failed to fetch order details for stock release",
+	if event.OrderID == uuid.Nil {
+		log.Printf(
+			"order-service: received PaymentFailed event with empty order_id",
 		)
+		return nil
 	}
 
-	for _, item := range order.Items {
-		if err := c.publisher.PublishStockReleaseRequested(
-			ctx,
-			item.ProductID,
-			item.Quantity,
-			"payment_failed",
-		); err != nil {
+	return c.orderService.HandlePaymentFailed(ctx, event)
+}
 
-			log.Printf(
-				"order-service: failed to publish stock release for product %s: %v",
-				item.ProductID,
-				err,
-			)
-
-			// در صورت بروز خطا در انتشار رویداد، خطا برمی‌گردانیم
-			//  تا پیام NACK/Requeue شود
-			return appErrors.Wrap(
-				appErrors.KindInternal,
-				err,
-				"failed to publish stock release requested event",
-			)
-
-		}
+// Close بستن تمام کانال‌های مربوط به مصرف‌کننده‌ها
+func (c *PaymentEventConsumer) Close() error {
+	if c == nil {
+		return nil
 	}
-
+	if c.consumerCompleted != nil {
+		_ = c.consumerCompleted.Close()
+	}
+	if c.consumerFailed != nil {
+		_ = c.consumerFailed.Close()
+	}
 	return nil
 }

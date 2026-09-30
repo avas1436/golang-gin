@@ -23,6 +23,14 @@ type RabbitMQEventPublisher struct {
 	publisher *rabbitmq.Publisher
 }
 
+func NewRabbitMQEventPublisher(
+	publisher *rabbitmq.Publisher,
+) *RabbitMQEventPublisher {
+	return &RabbitMQEventPublisher{
+		publisher: publisher,
+	}
+}
+
 // بعد از کامیت شدن موفق سفارش در سرویس سفارشات این رویداد منتشر میشود
 // تا سرویس های محصول و نوتیف و انبار داری و ... از آن استفاده کنند
 func (

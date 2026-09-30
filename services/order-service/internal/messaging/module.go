@@ -5,80 +5,17 @@ package messaging
 import (
 	"context"
 	"log"
-	"order-service/internal/repository"
-	"order-service/internal/service"
-	appErrors "pkg/errors"
 
+	appErrors "pkg/errors"
 	"pkg/events"
+	"pkg/rabbitmq"
+
+	"order-service/internal/service"
 
 	"go.uber.org/fx"
-
-	"pkg/rabbitmq"
 )
 
-func NewPaymentEventConsumer(
-	conn *rabbitmq.Connection,
-	orderRepo repository.OrderRepository,
-	publisher *RabbitMQEventPublisher,
-) (
-	*PaymentEventConsumer,
-	error,
-) {
-
-	// ۱. کانال اختصاصی برای صف پرداخت موفق
-	chCompleted, err := conn.Channel()
-	if err != nil {
-		return nil, err
-	}
-
-	consumerCompleted, err := rabbitmq.NewConsumer(chCompleted)
-	if err != nil {
-		_ = chCompleted.Close()
-		return nil, err
-	}
-
-	if err := consumerCompleted.BindQueue(
-		events.QueueOrderPaymentCompleted,
-		events.ExchangeOrderEvents,
-		events.RoutingKeyPaymentCompleted,
-	); err != nil {
-		_ = chCompleted.Close()
-		return nil, err
-	}
-
-	// ۲. کانال اختصاصی برای صف پرداخت ناموفق
-	chFailed, err := conn.Channel()
-	if err != nil {
-		_ = chCompleted.Close()
-		return nil, err
-	}
-
-	consumerFailed, err := rabbitmq.NewConsumer(chFailed)
-	if err != nil {
-		_ = chCompleted.Close()
-		_ = chFailed.Close()
-		return nil, err
-	}
-
-	if err := consumerFailed.BindQueue(
-		events.QueueOrderPaymentFailed,
-		events.ExchangeOrderEvents,
-		events.RoutingKeyPaymentFailed,
-	); err != nil {
-		_ = chCompleted.Close()
-		_ = chFailed.Close()
-		return nil, err
-	}
-
-	return &PaymentEventConsumer{
-		consumerCompleted: consumerCompleted,
-		consumerFailed:    consumerFailed,
-		orderRepo:         orderRepo,
-		publisher:         publisher,
-	}, nil
-}
-
-// NewRabbitPublisher یک Publisher اختصاصی برای order-service روی Exchange اختصاصی order_events می‌سازد
+// NewRabbitPublisher یک Publisher اختصاصی برای order-service می‌سازد
 func NewRabbitPublisher(
 	conn *rabbitmq.Connection,
 ) (*rabbitmq.Publisher, error) {
@@ -93,7 +30,7 @@ func NewRabbitPublisher(
 
 	publisher, err := rabbitmq.NewPublisher(
 		ch,
-		events.ExchangeOrderEvents, // Exchange اختصاصی order-service
+		events.ExchangeOrderEvents,
 	)
 	if err != nil {
 		_ = ch.Close()
@@ -107,40 +44,39 @@ func NewRabbitPublisher(
 	return publisher, nil
 }
 
-// NewRabbitMQEventPublisher یک Event Publisher می‌سازد.
-func NewRabbitMQEventPublisher(
-	publisher *rabbitmq.Publisher,
-) *RabbitMQEventPublisher {
-
-	return &RabbitMQEventPublisher{
-		publisher: publisher,
-	}
-}
-
-// RegisterMessagingLifecycle مدیریت شروع Consumer و Shutdown شدن Publisher
+// RegisterMessagingLifecycle مدیریت شروع Consumer و Shutdown پاکیزه
 func RegisterMessagingLifecycle(
 	lc fx.Lifecycle,
 	publisher *RabbitMQEventPublisher,
 	consumer *PaymentEventConsumer,
 ) {
-	lc.Append(
-		fx.Hook{
-			OnStart: func(ctx context.Context) error {
-				go func() {
-					if err := consumer.StartListening(context.Background()); err != nil {
-						log.Printf(
-							"order-service: payment consumer stopped with error: %v",
-							err,
-						)
-					}
-				}()
-				return nil
-			},
-			OnStop: func(ctx context.Context) error {
-				return publisher.Close()
-			},
+	ctx, cancel := context.WithCancel(context.Background())
+
+	lc.Append(fx.Hook{
+		OnStart: func(startCtx context.Context) error {
+			go func() {
+				log.Println("order-service: starting payment event consumer...")
+				if err := consumer.StartListening(ctx); err != nil {
+					log.Printf(
+						"order-service: payment consumer stopped with error: %v",
+						err,
+					)
+				}
+			}()
+			return nil
 		},
-	)
+		OnStop: func(stopCtx context.Context) error {
+			log.Println("order-service: stopping messaging lifecycle...")
+			cancel()
+			if consumer != nil {
+				_ = consumer.Close()
+			}
+			if publisher != nil {
+				_ = publisher.Close()
+			}
+			return nil
+		},
+	})
 }
 
 var Module = fx.Module(
@@ -149,12 +85,10 @@ var Module = fx.Module(
 	fx.Provide(
 		NewRabbitPublisher,
 		NewRabbitMQEventPublisher,
-		NewPaymentEventConsumer,
-
-		// نگاشت RabbitMQEventPublisher به اینترفیس service.EventPublisher
 		func(p *RabbitMQEventPublisher) service.EventPublisher {
 			return p
 		},
+		NewPaymentEventConsumer,
 	),
 
 	fx.Invoke(
