@@ -17,9 +17,10 @@ import (
 
 // PaymentEventConsumer مسئول دریافت و پردازش رویدادهای پرداخت و تکمیل Saga
 type PaymentEventConsumer struct {
-	consumer  *rabbitmq.Consumer
-	orderRepo repository.OrderRepository
-	publisher *RabbitMQEventPublisher
+	consumerCompleted *rabbitmq.Consumer
+	consumerFailed    *rabbitmq.Consumer
+	orderRepo         repository.OrderRepository
+	publisher         *RabbitMQEventPublisher
 }
 
 // StartListening استماع همزمان رویدادهای پرداخت موفق و ناموفق از صف‌های مجزا
@@ -28,7 +29,7 @@ func (c *PaymentEventConsumer) StartListening(ctx context.Context) error {
 
 	// ۱. شنود صف پرداخت موفق
 	go func() {
-		err := c.consumer.Consume(
+		err := c.consumerCompleted.Consume(
 			ctx,
 			events.QueueOrderPaymentCompleted,
 			func(ctx context.Context, body []byte) error {
@@ -54,7 +55,7 @@ func (c *PaymentEventConsumer) StartListening(ctx context.Context) error {
 
 	// ۲. شنود صف پرداخت ناموفق
 	go func() {
-		err := c.consumer.Consume(
+		err := c.consumerFailed.Consume(
 			ctx,
 			events.QueueOrderPaymentFailed,
 			func(ctx context.Context, body []byte) error {

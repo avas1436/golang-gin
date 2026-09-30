@@ -7,7 +7,6 @@ import (
 	"log"
 	"order-service/internal/repository"
 	"order-service/internal/service"
-	appErrors "pkg/errors"
 
 	"pkg/events"
 
@@ -25,60 +24,56 @@ func NewPaymentEventConsumer(
 	error,
 ) {
 
-	ch, err := conn.Channel()
+	// ۱. کانال اختصاصی برای صف پرداخت موفق
+	chCompleted, err := conn.Channel()
 	if err != nil {
-		return nil, appErrors.Wrap(
-			appErrors.KindInternal,
-			err,
-			"failed to open channel for payment consumer",
-		)
+		return nil, err
 	}
 
-	consumer, err := rabbitmq.NewConsumer(ch)
+	consumerCompleted, err := rabbitmq.NewConsumer(chCompleted)
 	if err != nil {
-		_ = ch.Close()
-		return nil, appErrors.Wrap(
-			appErrors.KindInternal,
-			err,
-			"failed to initialize rabbitmq consumer",
-		)
+		_ = chCompleted.Close()
+		return nil, err
 	}
 
-	// ثبت صف و اتصال آن به Exchange رویدادهای پرداخت (Binding)
-	if err := consumer.BindQueue(
+	if err := consumerCompleted.BindQueue(
 		events.QueueOrderPaymentCompleted,
 		events.ExchangeOrderEvents,
 		events.RoutingKeyPaymentCompleted,
 	); err != nil {
-
-		_ = ch.Close()
-
-		return nil, appErrors.Wrap(
-			appErrors.KindInternal,
-			err,
-			"failed to bind queue to payment succeeded routing key",
-		)
+		_ = chCompleted.Close()
+		return nil, err
 	}
 
-	if err := consumer.BindQueue(
+	// ۲. کانال اختصاصی برای صف پرداخت ناموفق
+	chFailed, err := conn.Channel()
+	if err != nil {
+		_ = chCompleted.Close()
+		return nil, err
+	}
+
+	consumerFailed, err := rabbitmq.NewConsumer(chFailed)
+	if err != nil {
+		_ = chCompleted.Close()
+		_ = chFailed.Close()
+		return nil, err
+	}
+
+	if err := consumerFailed.BindQueue(
 		events.QueueOrderPaymentFailed,
 		events.ExchangeOrderEvents,
 		events.RoutingKeyPaymentFailed,
 	); err != nil {
-
-		_ = ch.Close()
-
-		return nil, appErrors.Wrap(
-			appErrors.KindInternal,
-			err,
-			"failed to bind queue to payment failed routing key",
-		)
+		_ = chCompleted.Close()
+		_ = chFailed.Close()
+		return nil, err
 	}
 
 	return &PaymentEventConsumer{
-		consumer:  consumer,
-		orderRepo: orderRepo,
-		publisher: publisher,
+		consumerCompleted: consumerCompleted,
+		consumerFailed:    consumerFailed,
+		orderRepo:         orderRepo,
+		publisher:         publisher,
 	}, nil
 }
 
