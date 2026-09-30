@@ -6,101 +6,131 @@ import (
 	"context"
 	"log"
 
+	appErrors "pkg/errors"
 	"pkg/events"
 	"pkg/rabbitmq"
 
+	"product-service/internal/cache"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/fx"
 )
 
-// RegisterConsumers صف‌ها را تعریف و Bind کرده و شنود رویدادها را در Goroutineهای مجزا آغاز می‌کند
-func RegisterConsumers(
-	lc fx.Lifecycle,
-	consumer *rabbitmq.Consumer,
-	releaseConsumer *StockReleaseConsumer,
-	confirmConsumer *StockConfirmConsumer,
+func NewOrderEventConsumer(
+	conn *rabbitmq.Connection,
+	pool *pgxpool.Pool,
+	productStore *cache.ProductCacheStore,
+) (
+	*OrderEventConsumer,
+	error,
 ) {
-	// ساخت کانتکست قابل لغو برای مدیریت خروج تمیز کانسومرها در OnStop
-	ctx, cancel := context.WithCancel(context.Background())
 
+	// ۱. ایجاد Channel و Consumer اختصاصی برای صف Stock Confirm
+	chConfirm, err := conn.Channel()
+	if err != nil {
+		return nil, appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to open channel for stock confirm consumer",
+		)
+	}
+
+	consumerConfirm, err := rabbitmq.NewConsumer(chConfirm)
+	if err != nil {
+		_ = chConfirm.Close()
+		return nil, appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to initialize stock confirm consumer",
+		)
+	}
+
+	if err := consumerConfirm.BindQueue(
+		events.QueueProductStockConfirm,
+		events.ExchangeOrderEvents,
+		events.RoutingKeyStockConfirmRequested,
+	); err != nil {
+		_ = chConfirm.Close()
+		return nil, appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to bind stock confirm queue",
+		)
+	}
+
+	// ۲. ایجاد Channel و Consumer اختصاصی برای صف Stock Release
+	chRelease, err := conn.Channel()
+	if err != nil {
+		_ = chConfirm.Close()
+		return nil, appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to open channel for stock release consumer",
+		)
+	}
+
+	consumerRelease, err := rabbitmq.NewConsumer(chRelease)
+	if err != nil {
+		_ = chConfirm.Close()
+		_ = chRelease.Close()
+		return nil, appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to initialize stock release consumer",
+		)
+	}
+
+	if err := consumerRelease.BindQueue(
+		events.QueueProductStockRelease,
+		events.ExchangeOrderEvents,
+		events.RoutingKeyStockReleaseRequested,
+	); err != nil {
+		_ = chConfirm.Close()
+		_ = chRelease.Close()
+		return nil, appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to bind stock release queue",
+		)
+	}
+
+	return &OrderEventConsumer{
+		consumerConfirm: consumerConfirm,
+		consumerRelease: consumerRelease,
+		pool:            pool,
+		productStore:    productStore,
+	}, nil
+}
+
+func RegisterMessagingLifecycle(
+	lc fx.Lifecycle,
+	consumer *OrderEventConsumer,
+) {
 	lc.Append(
 		fx.Hook{
-			OnStart: func(startCtx context.Context) error {
-
-				// ۱. ساخت و Bind کردن صف آزادسازی رزرو انبار (Stock Release)
-				if err := consumer.BindQueue(
-					events.QueueProductStockRelease,
-					events.ExchangeOrderEvents,
-					events.RoutingKeyStockReleaseRequested,
-				); err != nil {
-
-					return err
-
-				}
-
-				// ۲. ساخت و Bind کردن صف قطعی‌سازی کسر انبار (Stock Confirm)
-				if err := consumer.BindQueue(
-					events.QueueProductStockConfirm,
-					events.ExchangeOrderEvents,
-					events.RoutingKeyStockConfirmRequested,
-				); err != nil {
-
-					return err
-				}
-
-				// اجرای شنود صف Stock Release در یک Goroutine مجزا (جلوگیری از Blocking)
+			OnStart: func(ctx context.Context) error {
 				go func() {
-					log.Println(
-						"product-service: starting stock release consumer...",
-					)
-					if err := consumer.Consume(
-						ctx,
-						events.QueueProductStockRelease,
-						releaseConsumer.Handle,
-					); err != nil {
-
-						log.Printf("product-service: stock release consumer stopped with error: %v", err)
+					if err := consumer.StartListening(context.Background()); err != nil {
+						log.Printf(
+							"product-service: order event consumer stopped with error: %v",
+							err,
+						)
 					}
 				}()
-
-				// اجرای شنود صف Stock Confirm در یک Goroutine مجزا
-				go func() {
-					log.Println("product-service: starting stock confirm consumer...")
-					if err := consumer.Consume(
-						ctx,
-						events.QueueProductStockConfirm,
-						confirmConsumer.Handle,
-					); err != nil {
-
-						log.Printf("product-service: stock confirm consumer stopped with error: %v", err)
-					}
-				}()
-
-				return nil
-			},
-
-			OnStop: func(stopCtx context.Context) error {
-				log.Println(
-					"product-service: stopping rabbitmq consumers...",
-				)
-
-				cancel() // خروج از حلقه متد Consume در تمام کانسومرها
-
 				return nil
 			},
 		},
 	)
 }
 
-// Module مربوط به مدیریت پیام‌رسانی و دریافت رویدادها در Product Service
 var Module = fx.Module(
 	"messaging",
 
 	fx.Provide(
-		NewStockReleaseConsumer,
-		NewStockConfirmConsumer,
+		NewOrderEventConsumer,
 	),
 
 	fx.Invoke(
-		RegisterConsumers,
+		RegisterMessagingLifecycle,
 	),
 )
