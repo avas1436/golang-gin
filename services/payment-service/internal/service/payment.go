@@ -128,8 +128,10 @@ func (
 
 	// ساختار درخواست لینک پرداخت از زرین پال
 	reqInput := client.PaymentRequestInput{
-		Amount:      payment.Amount,
-		Description: fmt.Sprintf("پرداخت سفارش %s", payment.OrderID.String()),
+		Amount: payment.Amount,
+		Description: fmt.Sprintf(
+			"پرداخت سفارش %s", payment.OrderID.String(),
+		),
 		CallbackURL: s.cfg.ZarinPal.PaymentCallbackURL,
 	}
 
@@ -146,18 +148,40 @@ func (
 		)
 
 		// تبدیل ساختار پرداخت به شکست خورده
-		_ = payment.MarkFailed(reason)
+		if markErr := payment.MarkFailed(reason); markErr != nil {
+			log.Printf(
+				"payment-service: failed to mark payment failed locally: %v",
+				markErr,
+			)
+		}
 
 		// اعمال کردن ساختار در دیتابیس
-		_ = s.paymentRepo.UpdateFromPending(ctx, payment)
+		if updateErr := s.paymentRepo.UpdateFromPending(
+			ctx,
+			payment,
+		); updateErr != nil {
+
+			log.Printf(
+				"payment-service: failed to update payment failed status in db for order %s: %v",
+				orderID,
+				updateErr,
+			)
+		}
 
 		// انتشار رویداد شکست خوردن پرداخت
-		_ = s.publisher.PublishPaymentFailed(
+		if pubErr := s.publisher.PublishPaymentFailed(
 			ctx,
 			payment.ID,
 			payment.OrderID,
 			reason,
-		)
+		); pubErr != nil {
+
+			log.Printf(
+				"payment-service: failed to publish payment.failed for order %s: %v",
+				orderID,
+				pubErr,
+			)
+		}
 
 		log.Printf(
 			"payment-service: failed to initiate zarinpal payment for order %s: %v",
@@ -217,9 +241,23 @@ func (
 		return nil, err
 	}
 
-	// Idempotency Check: اگر پرداخت قبلاً تعیین تکلیف شده است
-	if !payment.CanTransitionTo(model.PaymentStatusCompleted) {
+	// ۲. مدیریت Idempotency:
+	// اگر این پرداخت قبلاً با موفقیت تایید شده، بدون خطای
+	// اضافی خود رکورد را برمی‌گردانیم
+	if payment.Status == model.PaymentStatusCompleted {
 		return payment, nil
+	}
+
+	// ۳. بررسی وضعیت مجاز:
+	// فقط پرداختی که در وضعیت 'awaiting' باشد می‌تواند استعلام و تایید شود
+	if payment.Status != model.PaymentStatusAwaitingPayment {
+		return nil, appErrors.New(
+			appErrors.KindInvalidInput,
+			fmt.Sprintf(
+				"payment cannot be verified from status '%s'",
+				payment.Status,
+			),
+		)
 	}
 
 	// ۲. بررسی انصراف کاربر یا خطای درگاه قبل از استعلام
@@ -227,16 +265,30 @@ func (
 
 		reason := "payment canceled by user or rejected by bank"
 
-		_ = payment.MarkFailed(reason)
+		if markErr := payment.MarkFailed(reason); markErr != nil {
+			return nil, markErr
+		}
 
-		_ = s.paymentRepo.Update(ctx, payment)
+		if updateErr := s.paymentRepo.Update(
+			ctx,
+			payment,
+		); updateErr != nil {
 
-		_ = s.publisher.PublishPaymentFailed(
+			return nil, updateErr
+		}
+
+		if pubErr := s.publisher.PublishPaymentFailed(
 			ctx,
 			payment.ID,
 			payment.OrderID,
 			reason,
-		)
+		); pubErr != nil {
+			log.Printf(
+				"payment-service: failed to publish payment.failed event for order %s: %v",
+				payment.OrderID,
+				pubErr,
+			)
+		}
 
 		return payment, nil
 	}
@@ -257,18 +309,33 @@ func (
 			reason = err.Error()
 		}
 
-		_ = payment.MarkFailed(reason)
+		if markErr := payment.MarkFailed(reason); markErr != nil {
+			return nil, markErr
+		}
 
-		_ = s.paymentRepo.Update(ctx, payment)
+		if updateErr := s.paymentRepo.Update(
+			ctx,
+			payment,
+		); updateErr != nil {
 
-		_ = s.publisher.PublishPaymentFailed(
+			return nil, updateErr
+		}
+
+		if pubErr := s.publisher.PublishPaymentFailed(
 			ctx,
 			payment.ID,
 			payment.OrderID,
 			reason,
-		)
+		); pubErr != nil {
 
-		return payment, appErrors.Wrap(
+			log.Printf(
+				"payment-service: failed to publish payment.failed event for order %s: %v",
+				payment.OrderID,
+				pubErr,
+			)
+		}
+
+		return nil, appErrors.Wrap(
 			appErrors.KindInvalidInput,
 			err,
 			"payment verification failed",
