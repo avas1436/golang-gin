@@ -301,13 +301,26 @@ func (
 
 	// درخواست گرفتن تاییدیه پرداخت از زرین پال
 	verifyOutput, err := s.gateway.VerifyPayment(ctx, verifyInput)
-	if err != nil || !verifyOutput.Success {
+	if err != nil {
 
-		reason := "zarinpal payment verification failed"
-
-		if err != nil {
-			reason = err.Error()
+		// تفکیک خطاهای موقتی از خطاهای قطعی رد تراکنش.
+		// اگر خطا از جنس KindInternal باشد، ممکن است پول از حساب
+		// کاربر کسر شده باشد.
+		// در این حالت پرداخت نباید Fail شود و در وضعیت
+		// AwaitingPayment باقی می‌ماند تا فرآیند Reconciliation
+		// آن را تعیین تکلیف کند.
+		if appErrors.GetKind(err) == appErrors.KindInternal {
+			log.Printf(
+				"payment-service: transient error during zarinpal verify for order %s (payment %s remains in awaiting state): %v",
+				payment.OrderID,
+				payment.ID,
+				err,
+			)
+			return nil, err
 		}
+
+		// تنها در صورت دریافت خطای قطعی کسب‌وکار، پرداخت Failed می‌شود.
+		reason := err.Error()
 
 		if markErr := payment.MarkFailed(reason); markErr != nil {
 			return nil, markErr
