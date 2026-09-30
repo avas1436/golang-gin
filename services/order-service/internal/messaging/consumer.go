@@ -154,6 +154,14 @@ func (
 				item.ProductID,
 				err,
 			)
+
+			// در صورت بروز خطا در انتشار رویداد، خطا برمی‌گردانیم
+			// تا پیام NACK/Requeue شود
+			return appErrors.Wrap(
+				appErrors.KindInternal,
+				err,
+				"failed to publish stock confirm requested event",
+			)
 		}
 	}
 
@@ -224,6 +232,14 @@ func (
 				"order-service: failed to publish stock release for product %s: %v",
 				item.ProductID,
 				err,
+			)
+
+			// در صورت بروز خطا در انتشار رویداد، خطا برمی‌گردانیم
+			//  تا پیام NACK/Requeue شود
+			return appErrors.Wrap(
+				appErrors.KindInternal,
+				err,
+				"failed to publish stock release requested event",
 			)
 
 		}
