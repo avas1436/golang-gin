@@ -53,7 +53,7 @@ func NewPaymentEventConsumer(
 
 	if err := consumerCompleted.BindQueue(
 		events.QueueOrderPaymentCompleted,
-		events.ExchangeOrderEvents,
+		events.ExchangePaymentEvents,
 		events.RoutingKeyPaymentCompleted,
 	); err != nil {
 		_ = chCompleted.Close()
@@ -88,7 +88,7 @@ func NewPaymentEventConsumer(
 
 	if err := consumerFailed.BindQueue(
 		events.QueueOrderPaymentFailed,
-		events.ExchangeOrderEvents,
+		events.ExchangePaymentEvents,
 		events.RoutingKeyPaymentFailed,
 	); err != nil {
 		_ = chCompleted.Close()
