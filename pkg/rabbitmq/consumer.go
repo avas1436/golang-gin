@@ -4,11 +4,46 @@ package rabbitmq
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 
 	appErrors "pkg/errors"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
+
+// تعریف سقف مجاز تلاش مجدد
+const maxRetryCount = 3
+
+// isPermanentError خطاهای غیرقابل جبران
+// (مانند عدم تطابق فیلدها یا خراب بودن فرمت JSON) را شناسایی می‌کند.
+// پیام با فرمت خراب با دوباره فرستاده
+// شدن به صف (requeue=true) هرگز درست نمی‌شود.
+func isPermanentError(err error) bool {
+	var syntaxErr *json.SyntaxError
+	var unmarshalErr *json.UnmarshalTypeError
+
+	return errors.As(err, &syntaxErr) || errors.As(err, &unmarshalErr)
+}
+
+// getRetryCount تعداد دفعات رد شدن پیام را از هدر x-death
+// که خود RabbitMQ پر می‌کند استخراج می‌کند.
+// دلیل محاسبه دقیق و توزیع‌شده تعداد تلاش مجدد بدون نیاز
+// به نگهداری state در حافظه برنامه.
+func getRetryCount(headers amqp.Table) int {
+	xDeath, ok := headers["x-death"].([]any)
+	if !ok || len(xDeath) == 0 {
+		return 0
+	}
+
+	if deathMap, ok := xDeath[0].(amqp.Table); ok {
+		if count, ok := deathMap["count"].(int64); ok {
+			return int(count)
+		}
+	}
+
+	return 0
+}
 
 // HandlerFunc منطق پردازش یک پیام را تعریف می‌کند.
 //
@@ -226,14 +261,43 @@ func (c *Consumer) Consume(
 				}
 
 				continue
-			}
+			} else {
 
-			if err := msg.Nack(false, true); err != nil {
-				return appErrors.Wrap(
-					appErrors.KindInternal,
-					err,
-					"failed to nack rabbitmq message",
-				)
+				// اگر خطا ساختاری/غیرقابل جبران است (مثل Unmarshal failure)
+				// دلیل: requeue = false داده می‌شود
+				// تا پیام حذف شده یا مستقیماً به DLQ برود
+				// و باعث حلقه بی‌نهایت پردازش نشود.
+				if isPermanentError(err) {
+					if nackErr := msg.Nack(false, false); nackErr != nil {
+						return appErrors.Wrap(
+							appErrors.KindInternal,
+							nackErr,
+							"failed to nack poison message",
+						)
+					}
+					continue
+				}
+
+				// بررسی سقف تعداد مجاز تلاش مجدد (Max Retries / Redelivered)
+				// دلیل: اگر پیام با خطای موقتی بیش از حد مجاز
+				// (مثلا ۳ بار) شکست بخورد، به DLQ منتقل می‌شود.
+				retryCount := getRetryCount(msg.Headers)
+				if msg.Redelivered || retryCount >= maxRetryCount {
+					if nackErr := msg.Nack(false, false); nackErr != nil {
+						return appErrors.Wrap(
+							appErrors.KindInternal,
+							nackErr,
+							"failed to nack message to dlq",
+						)
+					}
+					continue
+				}
+
+				// برای خطاهای موقتی و قبل از رسیدن به سقف تلاش مجدد
+				// -> Requeue
+				if nackErr := msg.Nack(false, true); nackErr != nil {
+					return appErrors.Wrap(appErrors.KindInternal, nackErr, "failed to nack rabbitmq message for requeue")
+				}
 			}
 		}
 	}
