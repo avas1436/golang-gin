@@ -5,11 +5,13 @@ package grpcmiddleware
 import (
 	"context"
 	"net"
+	"strings"
 
 	"pkg/ratelimit"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 )
@@ -26,13 +28,50 @@ type KeyFunc func(ctx context.Context, req any) string
 
 // به صورت پیش فرض اگر هیچی نباشه این تابع کلید را میسازد
 // البته این روش وقتی reverse-proxy داریم کار درستی نیست
+// func DefaultKeyFunc(ctx context.Context, _ any) string {
+// 	p, ok := peer.FromContext(ctx)
+// 	if !ok {
+// 		return "unknown"
+// 	}
+
+// 	// این قسمت تنها آیپی درخواست را میدهد و پورت را حذف میکند
+// 	host, _, err := net.SplitHostPort(p.Addr.String())
+// 	if err != nil {
+// 		return p.Addr.String()
+// 	}
+
+// 	return host
+// }
+
+// این تابع پیش فرض ساخت کلید است که ابتدا سعی میکند
+// با آیپی اصلی کاربر کلید بسازد و اگر نشد با آیپی ترافیک
+// یا انجینیکس کلید میسازد
 func DefaultKeyFunc(ctx context.Context, _ any) string {
+
+	// 1. بررسی gRPC Metadata برای Forwarded IP
+	if md, ok := metadata.FromIncomingContext(ctx); ok {
+
+		if xff := md.Get("x-forwarded-for"); len(xff) > 0 && xff[0] != "" {
+
+			// ممکن است چندین IP با کاما جدا شده باشند؛ اولین IP
+			// متعلق به کلاینت اصلی است
+			ips := strings.Split(xff[0], ",")
+
+			return strings.TrimSpace(ips[0])
+		}
+
+		if xri := md.Get("x-real-ip"); len(xri) > 0 && xri[0] != "" {
+			return xri[0]
+		}
+
+	}
+
+	// 2. Fallback به peer.FromContext
 	p, ok := peer.FromContext(ctx)
 	if !ok {
 		return "unknown"
 	}
 
-	// این قسمت تنها آیپی درخواست را میدهد و پورت را حذف میکند
 	host, _, err := net.SplitHostPort(p.Addr.String())
 	if err != nil {
 		return p.Addr.String()
