@@ -122,8 +122,37 @@ func (
 		},
 	)
 
-	if err != nil || alreadyHandled {
+	if err != nil {
 		return err
+	}
+
+	// مدیریت حالت بازیابی از کرش (Crash Recovery).
+	if alreadyHandled {
+		existingPayment, err := s.paymentRepo.GetByOrderID(ctx, orderID)
+		if err != nil {
+			return err
+		}
+
+		// اگر وضعیت پرداخت همچنان Pending باشد، یعنی تماس با
+		// درگاه در نوبت قبل انجام نشده بود.
+		// در نتیجه پرداختِ موجود را جایگزین کرده و فرآیند درخواست
+		// Authority از درگاه را ادامه می‌دهیم.
+		if existingPayment.Status == model.PaymentStatusPending {
+			payment = existingPayment
+			log.Printf(
+				"payment-service: recovering pending payment for order %s after previous crash",
+				orderID,
+			)
+		} else {
+			// پرداخت قبلاً تعیین تکلیف شده یا Authority
+			// دریافت کرده است؛ پس پردازش تکراری انجام نمی‌شود.
+			log.Printf(
+				"payment-service: order.created event %s already fully processed for order %s, skipping",
+				eventID,
+				orderID,
+			)
+			return nil
+		}
 	}
 
 	// ساختار درخواست لینک پرداخت از زرین پال
