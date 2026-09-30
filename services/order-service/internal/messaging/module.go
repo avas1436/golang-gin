@@ -16,18 +16,6 @@ import (
 	"pkg/rabbitmq"
 )
 
-// صف های هر قسمت کاملا از هم جدا هستند
-const (
-	// صف مصرف کننده رویداد تکمیل سفارش
-	paymentCompletedQueue = "order.payment_completed.queue"
-
-	// صف مصرف کننده رویداد شکست سفارش
-	paymentFailedQueue = "order.payment_failed.queue"
-
-	// اتصال به محل تبادل پیام سیستم پرداخت
-	paymentExchange = "payment_events"
-)
-
 func NewPaymentEventConsumer(
 	conn *rabbitmq.Connection,
 	orderRepo repository.OrderRepository,
@@ -58,8 +46,8 @@ func NewPaymentEventConsumer(
 
 	// ثبت صف و اتصال آن به Exchange رویدادهای پرداخت (Binding)
 	if err := consumer.BindQueue(
-		paymentCompletedQueue,
-		paymentExchange,
+		events.QueueOrderPaymentCompleted,
+		events.ExchangeOrderEvents,
 		events.RoutingKeyPaymentCompleted,
 	); err != nil {
 
@@ -73,8 +61,8 @@ func NewPaymentEventConsumer(
 	}
 
 	if err := consumer.BindQueue(
-		paymentFailedQueue,
-		paymentExchange,
+		events.QueueOrderPaymentFailed,
+		events.ExchangeOrderEvents,
 		events.RoutingKeyPaymentFailed,
 	); err != nil {
 
@@ -118,7 +106,7 @@ func NewRabbitPublisher(
 
 	publisher, err := rabbitmq.NewPublisher(
 		ch,
-		"order.events",
+		events.ExchangeOrderEvents,
 	)
 	if err != nil {
 		_ = ch.Close()

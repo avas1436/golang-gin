@@ -6,6 +6,7 @@ import (
 	"context"
 	"log"
 
+	"pkg/events"
 	"pkg/rabbitmq"
 
 	"go.uber.org/fx"
@@ -24,25 +25,39 @@ func RegisterConsumers(
 	lc.Append(
 		fx.Hook{
 			OnStart: func(startCtx context.Context) error {
-				// نام Exchange مشترکی که رویدادهای سفارشات و انبار روی آن منتشر می‌شوند
-				const exchange = "order_events"
 
 				// ۱. ساخت و Bind کردن صف آزادسازی رزرو انبار (Stock Release)
-				const releaseQueue = "product_service_stock_release_queue"
-				if err := consumer.BindQueue(releaseQueue, exchange, eventTypeStockRelease); err != nil {
+				if err := consumer.BindQueue(
+					events.QueueProductStockRelease,
+					events.ExchangeOrderEvents,
+					events.RoutingKeyStockReleaseRequested,
+				); err != nil {
+
 					return err
+
 				}
 
 				// ۲. ساخت و Bind کردن صف قطعی‌سازی کسر انبار (Stock Confirm)
-				const confirmQueue = "product_service_stock_confirm_queue"
-				if err := consumer.BindQueue(confirmQueue, exchange, eventTypeStockConfirm); err != nil {
+				if err := consumer.BindQueue(
+					events.QueueProductStockConfirm,
+					events.ExchangeOrderEvents,
+					events.RoutingKeyStockConfirmRequested,
+				); err != nil {
+
 					return err
 				}
 
 				// اجرای شنود صف Stock Release در یک Goroutine مجزا (جلوگیری از Blocking)
 				go func() {
-					log.Println("product-service: starting stock release consumer...")
-					if err := consumer.Consume(ctx, releaseQueue, releaseConsumer.Handle); err != nil {
+					log.Println(
+						"product-service: starting stock release consumer...",
+					)
+					if err := consumer.Consume(
+						ctx,
+						events.QueueProductStockRelease,
+						releaseConsumer.Handle,
+					); err != nil {
+
 						log.Printf("product-service: stock release consumer stopped with error: %v", err)
 					}
 				}()
@@ -50,7 +65,12 @@ func RegisterConsumers(
 				// اجرای شنود صف Stock Confirm در یک Goroutine مجزا
 				go func() {
 					log.Println("product-service: starting stock confirm consumer...")
-					if err := consumer.Consume(ctx, confirmQueue, confirmConsumer.Handle); err != nil {
+					if err := consumer.Consume(
+						ctx,
+						events.QueueProductStockConfirm,
+						confirmConsumer.Handle,
+					); err != nil {
+
 						log.Printf("product-service: stock confirm consumer stopped with error: %v", err)
 					}
 				}()
@@ -59,8 +79,12 @@ func RegisterConsumers(
 			},
 
 			OnStop: func(stopCtx context.Context) error {
-				log.Println("product-service: stopping rabbitmq consumers...")
+				log.Println(
+					"product-service: stopping rabbitmq consumers...",
+				)
+
 				cancel() // خروج از حلقه متد Consume در تمام کانسومرها
+
 				return nil
 			},
 		},

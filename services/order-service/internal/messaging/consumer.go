@@ -30,7 +30,7 @@ func (c *PaymentEventConsumer) StartListening(ctx context.Context) error {
 	go func() {
 		err := c.consumer.Consume(
 			ctx,
-			paymentCompletedQueue,
+			events.QueueOrderPaymentCompleted,
 			func(ctx context.Context, body []byte) error {
 				var event events.PaymentCompleted
 				if err := json.Unmarshal(body, &event); err != nil {
@@ -56,7 +56,7 @@ func (c *PaymentEventConsumer) StartListening(ctx context.Context) error {
 	go func() {
 		err := c.consumer.Consume(
 			ctx,
-			paymentFailedQueue,
+			events.QueueOrderPaymentFailed,
 			func(ctx context.Context, body []byte) error {
 				var event events.PaymentFailed
 				if err := json.Unmarshal(body, &event); err != nil {

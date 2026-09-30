@@ -8,11 +8,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// کلیدهای مسیریابی مربوط به رویدادهای کاربر
-const (
-	RoutingKeyUserOTPRequested = "user.otp.requested"
-)
-
 // UserOTPRequested رویدادی است که هنگام درخواست کد تأیید (OTP) منتشر می‌شود
 // تا notification-service آن را دریافت کرده و پیامک ارسال کند
 type UserOTPRequested struct {

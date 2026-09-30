@@ -11,12 +11,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// ربیت‌ام‌کیو بر اساس این کلیدها تصمیم می‌گیرد پیام به کدام صف برود
-const (
-	RoutingKeyPaymentCompleted = "payment.completed"
-	RoutingKeyPaymentFailed    = "payment.failed"
-)
-
 // PaymentCompleted بعد از شبیه‌سازی موفق درگاه بانکی توسط Payment
 // Service منتشر می‌شود. Order Service با گوش‌دادن به این رویداد،
 // وضعیت سفارش را به confirmed تغییر می‌دهد و ConfirmStock را برای

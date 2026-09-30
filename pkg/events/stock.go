@@ -10,14 +10,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// ربیت ام کیو بر اساس این کلید تصمیم میگیرد پیام را به کدام صف
-// یا مصرف کننده ارسال کند
-const (
-	RoutingKeyStockReleaseRequested = "stock.release.requested"
-	RoutingKeyStockConfirmRequested = "stock.confirm.requested"
-	RoutingKeyOrderCreated          = "order.created"
-)
-
 // محتوی درخواست غیر همزمانی است که ربیت ام کیو منتقل میکند
 // برای آزاد کردن تعداد رزرو یا همان عملیات جبرانی
 type StockReleaseRequested struct {
