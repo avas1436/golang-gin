@@ -5,6 +5,7 @@ package repository
 import (
 	"context"
 	stdErrors "errors"
+	"time"
 
 	appErrors "pkg/errors"
 	"pkg/postgres"
@@ -54,6 +55,14 @@ type PaymentRepository interface {
 		ctx context.Context,
 		payment *model.Payment,
 	) error
+
+	// GetStaleAwaitingPayments پرداخت‌های بلاتکلیف مانده در وضعیت
+	// awaiting را برای تعیین تکلیف و انقضا استعلام می‌کند
+	GetStaleAwaitingPayments(
+		ctx context.Context,
+		timeout time.Duration,
+		limit int,
+	) ([]*model.Payment, error)
 }
 
 type paymentRepository struct {
@@ -408,4 +417,93 @@ func (
 	}
 
 	return nil
+}
+
+// شناسایی پرداخت‌هایی که کاربر وارد درگاه شده اما عملیات را تکمیل نکرده
+// و کالبک بانک فراخوانی نشده است
+// با شرط status = 'awaiting'
+func (
+	r *paymentRepository,
+) GetStaleAwaitingPayments(
+	ctx context.Context,
+	timeout time.Duration,
+	limit int,
+) (
+	[]*model.Payment,
+	error,
+) {
+
+	query := `
+		SELECT
+			id,
+			order_id,
+			user_id,
+			amount,
+			currency,
+			status,
+			gateway_name,
+			gateway_ref_id,
+			authority,
+			redirect_url,
+			failure_reason,
+			metadata,
+			created_at,
+			updated_at
+		FROM payments
+		WHERE status = 'awaiting'
+		  AND updated_at < $1
+		ORDER BY updated_at ASC
+		LIMIT $2
+	`
+
+	cutoffTime := time.Now().Add(-timeout)
+
+	rows, err := r.db.Query(ctx, query, cutoffTime, limit)
+	if err != nil {
+		return nil, appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to query stale awaiting payments",
+		)
+	}
+	defer rows.Close()
+
+	var payments []*model.Payment
+	for rows.Next() {
+		p := &model.Payment{}
+		err := rows.Scan(
+			&p.ID,
+			&p.OrderID,
+			&p.UserID,
+			&p.Amount,
+			&p.Currency,
+			&p.Status,
+			&p.GatewayName,
+			&p.GatewayRefID,
+			&p.Authority,
+			&p.RedirectURL,
+			&p.FailureReason,
+			&p.Metadata,
+			&p.CreatedAt,
+			&p.UpdatedAt,
+		)
+		if err != nil {
+			return nil, appErrors.Wrap(
+				appErrors.KindInternal,
+				err,
+				"failed to scan stale payment",
+			)
+		}
+		payments = append(payments, p)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"error iterating stale payments rows",
+		)
+	}
+
+	return payments, nil
 }

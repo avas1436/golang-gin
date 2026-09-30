@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"time"
 
 	appErrors "pkg/errors"
 	"pkg/postgres"
@@ -454,4 +455,54 @@ func (
 	}
 
 	return toProtoPayment(payment), nil
+}
+
+// TODO: باید یک ورکر برای اجرای این تابع بسازم
+// ExpireStalePayments جهت انقضای دوره‌ای پرداخت‌های معلق
+// آزادسازی موجودی‌های رزرو شده در سفارشات رهاشده و تغییر وضعیت
+// FSM مدل دامنه به PaymentStatusExpired.
+func (
+	s *PaymentService,
+) ExpireStalePayments(
+	ctx context.Context,
+	timeout time.Duration,
+) error {
+
+	// ۱. استعلام پرداخت‌هایی که بیش از timeout مشخص در وضعیت
+	// awaiting مانده‌اند
+	payments, err := s.paymentRepo.GetStaleAwaitingPayments(
+		ctx,
+		timeout,
+		100,
+	)
+	if err != nil {
+		return err
+	}
+
+	for _, payment := range payments {
+
+		// اعمال وضعیت Expired روی مدل دامنه
+		if err := payment.MarkExpired(); err != nil {
+			log.Printf(
+				"payment-service: failed to mark payment %s as expired locally: %v",
+				payment.ID,
+				err,
+			)
+			continue
+		}
+
+		// ذخیره اتمیک وضعیت Expired در دیتابیس و ثبت رویداد
+		// payment.failed در Outbox
+		if err := s.paymentRepo.Update(ctx, payment); err != nil {
+			return err
+		}
+
+		log.Printf(
+			"payment-service: successfully expired stale payment %s for order %s",
+			payment.ID,
+			payment.OrderID,
+		)
+	}
+
+	return nil
 }
