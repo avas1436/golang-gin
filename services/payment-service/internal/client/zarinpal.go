@@ -238,6 +238,8 @@ func (
 
 	// افزودن هدر های درخواست
 	req.Header.Set("Content-Type", "application/json")
+	// افزودن هدر Accept برای اطمینان از دریافت خروجی با فرمت JSON از درگاه
+	req.Header.Set("Accept", "application/json")
 
 	// ارسال درخواست Verify.
 	resp, err := z.httpClient.Do(req)
@@ -258,15 +260,6 @@ func (
 		}
 	}()
 
-	var zResp zarinpalVerifyResponse
-	if err := json.NewDecoder(resp.Body).Decode(&zResp); err != nil {
-		return nil, appErrors.Wrap(
-			appErrors.KindInternal,
-			err,
-			"failed to decode zarinpal verify response",
-		)
-	}
-
 	// بررسی status code مربوط به HTTP.
 	if resp.StatusCode < http.StatusOK ||
 		resp.StatusCode >= http.StatusMultipleChoices {
@@ -281,15 +274,13 @@ func (
 
 	}
 
-	// Decode پاسخ زرین‌پال. var zResp zarinpalVerifyResponse
+	var zResp zarinpalVerifyResponse
 	if err := json.NewDecoder(resp.Body).Decode(&zResp); err != nil {
-
 		return nil, appErrors.Wrap(
 			appErrors.KindInternal,
 			err,
 			"failed to decode zarinpal verify response",
 		)
-
 	}
 
 	// کد 100 یعنی پرداخت با موفقیت تأیید شده است.
