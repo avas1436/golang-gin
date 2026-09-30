@@ -17,8 +17,6 @@ import (
 	"github.com/google/uuid"
 )
 
-const otpTTL = 2 * time.Minute
-
 type UserService struct {
 	userRepo         repository.UserRepository
 	otpRepo          repository.OTPRepository
@@ -28,55 +26,6 @@ type UserService struct {
 
 	tokens          auth.TokenManager
 	refreshTokenTTL time.Duration
-}
-
-func (
-	s *UserService,
-) issueTokens(
-	ctx context.Context,
-	user *model.User,
-) (
-	access_token string,
-	refresh_token string,
-	expires_in int64,
-	err error,
-) {
-
-	// start := time.Now()
-
-	accessToken, err := s.tokens.GenerateAccessToken(
-		user.ID.String(),
-		string(user.Role),
-	)
-	if err != nil {
-		return "", "", 0, err
-	}
-
-	// log.Printf("GenerateAccessToken: %s", time.Since(start))
-
-	// start = time.Now()
-
-	refreshToken, err := s.tokens.GenerateRefreshToken()
-	if err != nil {
-		return "", "", 0, err
-	}
-
-	// log.Printf("CreateRefreshToken: %s", time.Since(start))
-
-	rt := &model.RefreshToken{
-		UserID:    user.ID,
-		TokenHash: s.tokens.HashRefreshToken(refreshToken),
-		ExpiresAt: time.Now().Add(s.refreshTokenTTL),
-	}
-
-	if err := s.refreshTokenRepo.Create(ctx, rt); err != nil {
-		return "", "", 0, err
-	}
-
-	return accessToken,
-		refreshToken,
-		int64(s.tokens.AccessTokenTTL().Seconds()),
-		nil
 }
 
 // Register
@@ -140,12 +89,6 @@ func (
 		nil
 }
 
-// یک هش معتبر bcrypt جهت جلوگیری از Timing Attack
-const dummyPasswordHash = "$2a$10$e8T.A0N1E8a1O5r.O4M6e.J9V2O1K1E8a1O5r.O4M6e.J9V2O1K1E"
-
-// پیام یکسان جهت جلوگیری از User Enumeration
-const errInvalidCredentials = "invalid phone number, email, or password"
-
 // Password Login
 func (
 	s *UserService,
@@ -206,7 +149,7 @@ func (
 	if !userFound || compareErr != nil {
 		return nil, appErrors.New(
 			appErrors.KindUnauthenticated,
-			errInvalidCredentials,
+			"invalid phone number, email, or password",
 		)
 	}
 
@@ -325,10 +268,24 @@ func (
 ) {
 
 	// اعتبار سنجی داده ورودی
-	if req == nil || req.OtpChallengeId == "" || req.OtpCode == "" {
+	if req == nil {
 		return nil, appErrors.New(
 			appErrors.KindInvalidInput,
-			"challenge id and code are required",
+			"verify otp request cannot be nil",
+		)
+	}
+
+	if req.OtpChallengeId == "" {
+		return nil, appErrors.New(
+			appErrors.KindInvalidInput,
+			"challenge id is required",
+		)
+	}
+
+	if req.OtpCode == "" {
+		return nil, appErrors.New(
+			appErrors.KindInvalidInput,
+			"code is required",
 		)
 	}
 
@@ -396,7 +353,14 @@ func (
 ) {
 
 	// اعتبار سنجی
-	if req == nil || req.RefreshToken == "" {
+	if req == nil {
+		return nil, appErrors.New(
+			appErrors.KindInvalidInput,
+			"refresh token request cannot be nil",
+		)
+	}
+
+	if req.RefreshToken == "" {
 		return nil, appErrors.New(
 			appErrors.KindInvalidInput,
 			"refresh token is required",
@@ -411,7 +375,7 @@ func (
 
 		if appErrors.GetKind(err) == appErrors.KindNotFound {
 			return nil, appErrors.New(
-				appErrors.KindNotFound,
+				appErrors.KindUnauthenticated,
 				"refresh token is invalid, expired, or already used",
 			)
 		}
