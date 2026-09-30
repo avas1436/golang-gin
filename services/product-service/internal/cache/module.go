@@ -23,7 +23,12 @@ var Module = fx.Module(
 		// ارائه Decorator رپوزیتوری کش شده
 		fx.Annotate(
 			NewCachedProductRepository,
-			fx.ParamTags(`name:"rawProductRepository"`, ``, ``),
+			fx.ParamTags(
+				`name:"rawProductRepository"`,
+				``,
+				`name:"productTTL"`,
+				`name:"searchTTL"`,
+			),
 		),
 	),
 )
