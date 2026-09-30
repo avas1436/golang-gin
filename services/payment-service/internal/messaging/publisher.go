@@ -67,3 +67,11 @@ func (
 
 	return p.publisher.Publish(ctx, events.RoutingKeyPaymentFailed, event)
 }
+
+// Close بستن کانال RabbitMQ مربوط به Publisher
+func (p *RabbitMQEventPublisher) Close() error {
+	if p == nil || p.publisher == nil {
+		return nil
+	}
+	return p.publisher.Close()
+}

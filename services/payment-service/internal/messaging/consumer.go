@@ -1,4 +1,4 @@
-// services/payment-service/internal/messaging/order_created_consumer.go
+// services/payment-service/internal/messaging/consumer.go
 
 package messaging
 
@@ -7,71 +7,107 @@ import (
 	"encoding/json"
 	"log"
 
+	appErrors "pkg/errors"
 	"pkg/events"
+	"pkg/rabbitmq"
 
 	"payment-service/internal/service"
 
 	"github.com/google/uuid"
 )
 
-// OrderCreatedConsumer تنها مسئول decode کردن پیام order.created و
+// OrderEventConsumer مسئول decode کردن پیام order.created و
 // اعتبارسنجی سطحی آن است؛ منطق دامنه در
-// service.PaymentService.HandleOrderCreated زندگی می‌کند
-type OrderCreatedConsumer struct {
-	paymentService *service.PaymentService
+type OrderEventConsumer struct {
+	consumerCreated *rabbitmq.Consumer
+	paymentService  *service.PaymentService
 }
 
-func NewOrderCreatedConsumer(
+func NewOrderEventConsumer(
+	conn *rabbitmq.Connection,
 	paymentService *service.PaymentService,
-) *OrderCreatedConsumer {
+) (
+	*OrderEventConsumer,
+	error,
+) {
 
-	return &OrderCreatedConsumer{
-		paymentService: paymentService,
+	// ۱. کانال اختصاصی برای صف پرداخت موفق
+	chCreated, err := conn.Channel()
+	if err != nil {
+		return nil, appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to open channel for order created consumer",
+		)
 	}
+
+	consumerCreated, err := rabbitmq.NewConsumer(chCreated)
+	if err != nil {
+		_ = chCreated.Close()
+		return nil, appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to initialize order created consumer",
+		)
+	}
+
+	if err := consumerCreated.BindQueue(
+		events.QueuePaymentOrderCreated,
+		events.ExchangeOrderEvents,
+		events.RoutingKeyOrderCreated,
+	); err != nil {
+		_ = chCreated.Close()
+		return nil, appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to bind queue to order created routing key",
+		)
+	}
+
+	return &OrderEventConsumer{
+		consumerCreated: consumerCreated,
+		paymentService:  paymentService,
+	}, nil
 }
 
-// Handle امضای rabbitmq.HandlerFunc را دارد
-func (
-	h *OrderCreatedConsumer,
-) Handle(
+// StartListening شروع استماع صف و تبدیل بایت‌های ورودی به struct
+func (c *OrderEventConsumer) StartListening(ctx context.Context) error {
+	return c.consumerCreated.Consume(
+		ctx,
+		events.QueuePaymentOrderCreated,
+		func(ctx context.Context, body []byte) error {
+			var event events.OrderCreated
+			if err := json.Unmarshal(body, &event); err != nil {
+				log.Printf(
+					"payment-service: failed to unmarshal order created event: %v",
+					err,
+				)
+
+				// Poison message - برای جلوگیری از مسدود شدن صف Ack می‌شود
+				return nil
+			}
+			return c.handleOrderCreated(ctx, event)
+		},
+	)
+}
+
+func (c *OrderEventConsumer) handleOrderCreated(
 	ctx context.Context,
-	body []byte,
+	event events.OrderCreated,
 ) error {
 
-	// اعتبار سنجی متن پیام
-	var event events.OrderCreated
-
-	// دسریالایز رویداد؛ بدنه‌ی خراب با تکرار مجدد درست نمی‌شود، پس
-	// nil برمی‌گردانیم تا پیام ACK شود و صف را مسدود نکند (poison
-	// message) — دقیقاً همان تصمیم product-service
-	if err := json.Unmarshal(body, &event); err != nil {
-		log.Printf(
-			"payment-service: failed to unmarshal order created event: %v",
-			err,
-		)
-		return nil
-	}
-
-	// اعتبار سنجی آیدی رویداد
+	// اعتبارسنجی اولیه شناسه رویداد
 	if event.EventID == uuid.Nil {
-		log.Printf(
-			"payment-service: order.created event has empty event_id",
-		)
-
+		log.Printf("payment-service: order.created event has empty event_id")
 		return nil
 	}
 
-	// اعتبار سنجی آیدی سفارش
 	if event.OrderID == uuid.Nil {
-		log.Printf(
-			"payment-service: order.created event %s has empty order_id",
-			event.EventID,
-		)
-
+		log.Printf("payment-service: order.created event has empty order_id")
 		return nil
 	}
 
-	return h.paymentService.HandleOrderCreated(
+	return c.paymentService.HandleOrderCreated(
 		ctx,
 		event.EventID,
 		event.OrderID,

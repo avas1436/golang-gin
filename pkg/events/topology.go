@@ -99,4 +99,9 @@ const (
 
 	// QueueNotificationUserOTP: دریافت رویداد ارسال پیامک به کاربر
 	QueueNotificationUserOTP = "notification.user_otp.queue"
+
+	// --- Payment Service Queues ---
+
+	// QueueNotificationUserOTP: دریافت رویداد ارسال پیامک به کاربر
+	QueuePaymentOrderCreated = "payment.order_created.queue"
 )
