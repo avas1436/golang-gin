@@ -103,17 +103,26 @@ func (
 		model.OrderStatusConfirmed,
 	); err != nil {
 
-		log.Printf(
-			"order-service: failed to update order status to confirmed for order %s: %v",
-			event.OrderID,
-			err,
-		)
+		// اگر وضعیت از قبل تغییر کرده است (Redelivery / Retry بعد از Crash)،
+		// خطا را نادیده گرفته و برای حفظ یکپارچگی Saga به مرحله بعد می‌رویم.
+		if appErrors.GetKind(err) == appErrors.KindAlreadyExists {
+			log.Printf(
+				"order-service: order %s is already processed (status not pending), continuing to stock confirmation for idempotency recovery",
+				event.OrderID,
+			)
+		} else {
+			log.Printf(
+				"order-service: failed to update order status to confirmed for order %s: %v",
+				event.OrderID,
+				err,
+			)
 
-		return appErrors.Wrap(
-			appErrors.KindInternal,
-			err,
-			"failed to update order status to confirmed",
-		)
+			return appErrors.Wrap(
+				appErrors.KindInternal,
+				err,
+				"failed to update order status to confirmed",
+			)
+		}
 	}
 
 	// ۲. دریافت آیتم‌های سفارش جهت قطعی کردن کسر موجودی در Product Service
@@ -165,17 +174,26 @@ func (
 		model.OrderStatusCancelled,
 	); err != nil {
 
-		log.Printf(
-			"order-service: failed to update order status to cancelled for order %s: %v",
-			event.OrderID,
-			err,
-		)
+		// اگر وضعیت از قبل تغییر کرده است (Redelivery / Retry بعد از Crash)،
+		// خطا را نادیده گرفته و برای حفظ یکپارچگی Saga به مرحله بعد می‌رویم.
+		if appErrors.GetKind(err) == appErrors.KindAlreadyExists {
+			log.Printf(
+				"order-service: order %s is already processed (status not pending), continuing to stock release for idempotency recovery",
+				event.OrderID,
+			)
+		} else {
+			log.Printf(
+				"order-service: failed to update order status to cancelled for order %s: %v",
+				event.OrderID,
+				err,
+			)
 
-		return appErrors.Wrap(
-			appErrors.KindInternal,
-			err,
-			"failed to update order status to cancelled",
-		)
+			return appErrors.Wrap(
+				appErrors.KindInternal,
+				err,
+				"failed to update order status to cancelled",
+			)
+		}
 	}
 
 	// ۲. دریافت آیتم‌های سفارش جهت آزادسازی موجودی رزرو شده در Product Service
