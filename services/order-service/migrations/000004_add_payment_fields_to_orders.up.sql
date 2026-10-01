@@ -1,0 +1,3 @@
+ALTER TABLE orders
+ADD COLUMN IF NOT EXISTS payment_url TEXT,
+ADD COLUMN IF NOT EXISTS payment_authority VARCHAR(255);
