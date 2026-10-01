@@ -20,6 +20,7 @@ import (
 type PaymentEventConsumer struct {
 	consumerCompleted *rabbitmq.Consumer
 	consumerFailed    *rabbitmq.Consumer
+	consumerInitiated *rabbitmq.Consumer
 	orderService      *service.OrderService
 }
 
@@ -100,16 +101,56 @@ func NewPaymentEventConsumer(
 		)
 	}
 
+	// ۳. کانال اختصاصی برای صف ایجاد لینک پرداخت
+	chInitiated, err := conn.Channel()
+	if err != nil {
+		_ = chCompleted.Close()
+		_ = chFailed.Close()
+		return nil, appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to open channel for payment initiated consumer",
+		)
+	}
+
+	consumerInitiated, err := rabbitmq.NewConsumer(chInitiated)
+	if err != nil {
+		_ = chCompleted.Close()
+		_ = chFailed.Close()
+		_ = chInitiated.Close()
+		return nil, appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to initialize payment initiated consumer",
+		)
+	}
+
+	if err := consumerInitiated.BindQueue(
+		events.QueueOrderPaymentInitiated,
+		events.ExchangePaymentEvents,
+		events.RoutingKeyPaymentInitiated,
+	); err != nil {
+		_ = chCompleted.Close()
+		_ = chFailed.Close()
+		_ = chInitiated.Close()
+		return nil, appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to bind queue to payment initiated routing key",
+		)
+	}
+
 	return &PaymentEventConsumer{
 		consumerCompleted: consumerCompleted,
 		consumerFailed:    consumerFailed,
 		orderService:      orderService,
+		consumerInitiated: consumerInitiated,
 	}, nil
 }
 
 // StartListening استماع همزمان رویدادهای پرداخت موفق و ناموفق از صف‌های مجزا
 func (c *PaymentEventConsumer) StartListening(ctx context.Context) error {
-	errCh := make(chan error, 2)
+	errCh := make(chan error, 3)
 
 	// ۱. شنود صف پرداخت موفق
 	go func() {
@@ -139,6 +180,22 @@ func (c *PaymentEventConsumer) StartListening(ctx context.Context) error {
 				appErrors.KindInternal,
 				err,
 				"error in payment failed consumer loop",
+			)
+		}
+	}()
+
+	// ۳. شنود صف ایجاد لینک پرداخت
+	go func() {
+		err := c.consumerInitiated.Consume(
+			ctx,
+			events.QueueOrderPaymentInitiated,
+			c.handlePaymentInitiated,
+		)
+		if err != nil {
+			errCh <- appErrors.Wrap(
+				appErrors.KindInternal,
+				err,
+				"error in payment initiated consumer loop",
 			)
 		}
 	}()
@@ -202,6 +259,29 @@ func (c *PaymentEventConsumer) handlePaymentFailed(
 	return c.orderService.HandlePaymentFailed(ctx, event)
 }
 
+func (c *PaymentEventConsumer) handlePaymentInitiated(
+	ctx context.Context,
+	body []byte,
+) error {
+	var event events.PaymentInitiated
+	if err := json.Unmarshal(body, &event); err != nil {
+		log.Printf(
+			"order-service: failed to unmarshal PaymentInitiated event: %v",
+			err,
+		)
+		return nil
+	}
+
+	if event.OrderID == uuid.Nil {
+		log.Printf(
+			"order-service: received PaymentInitiated event with empty order_id",
+		)
+		return nil
+	}
+
+	return c.orderService.HandlePaymentInitiated(ctx, event)
+}
+
 // Close بستن تمام کانال‌های مربوط به مصرف‌کننده‌ها
 func (c *PaymentEventConsumer) Close() error {
 	if c == nil {
@@ -212,6 +292,9 @@ func (c *PaymentEventConsumer) Close() error {
 	}
 	if c.consumerFailed != nil {
 		_ = c.consumerFailed.Close()
+	}
+	if c.consumerInitiated != nil {
+		_ = c.consumerInitiated.Close()
 	}
 	return nil
 }

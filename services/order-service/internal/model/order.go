@@ -20,13 +20,15 @@ const (
 
 // محتویات یک سفارش
 type Order struct {
-	ID          uuid.UUID    `db:"id" json:"id"`
-	UserID      uuid.UUID    `db:"user_id" json:"user_id"`
-	Status      OrderStatus  `db:"status" json:"status"`
-	TotalAmount int64        `db:"total_amount" json:"total_amount"`
-	Items       []*OrderItem `db:"-" json:"items,omitempty"`
-	CreatedAt   time.Time    `db:"created_at" json:"created_at"`
-	UpdatedAt   time.Time    `db:"updated_at" json:"updated_at"`
+	ID               uuid.UUID    `db:"id" json:"id"`
+	UserID           uuid.UUID    `db:"user_id" json:"user_id"`
+	Status           OrderStatus  `db:"status" json:"status"`
+	TotalAmount      int64        `db:"total_amount" json:"total_amount"`
+	PaymentURL       *string      `db:"payment_url" json:"payment_url,omitempty"`
+	PaymentAuthority *string      `db:"payment_authority" json:"payment_authority,omitempty"`
+	Items            []*OrderItem `db:"-" json:"items,omitempty"`
+	CreatedAt        time.Time    `db:"created_at" json:"created_at"`
+	UpdatedAt        time.Time    `db:"updated_at" json:"updated_at"`
 }
 
 // OrderItem یک ردیف از سفارش است. ProductName و UnitPrice عمداً

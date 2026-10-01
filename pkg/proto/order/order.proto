@@ -16,6 +16,8 @@ message Order {
   repeated OrderItem items = 5;
   google.protobuf.Timestamp created_at = 6;
   google.protobuf.Timestamp updated_at = 7;
+  string payment_url = 8;
+  string payment_authority = 9;
 }
 
 message OrderItem {
@@ -28,10 +30,12 @@ message OrderItem {
 
 // --- Create Order ---
 // عمداً هیچ فیلد user_id یا price/name اینجا نیست: user_id از JWT
-// claims گرفته می‌شود (نه از ورودی کلاینت)، و name/price هم توسط
-// خودِ سرویس از Product Service خوانده می‌شود. اعتماد به این
-// مقادیر اگر از کلاینت می‌آمدند یعنی هرکسی می‌توانست قیمت دلخواه
-// خودش را برای خرید بفرستد
+// claims گرفته می‌شود (نه از ورودی کلاینت)، و name/price هم
+// توسط
+// خودِ سرویس از Product Service خوانده می‌شود. اعتماد به
+// این
+// مقادیر اگر از کلاینت می‌آمدند یعنی هرکسی می‌توانست قیمت
+// دلخواه خودش را برای خرید بفرستد
 message CreateOrderRequest {
   repeated CreateOrderItemRequest items = 1;
 }
@@ -47,16 +51,16 @@ message GetOrderRequest {
 }
 
 // --- List My Orders ---
-// همیشه سفارش‌های همان کاربر احراز هویت‌شده را برمی‌گرداند؛ به
-// همین دلیل هیچ user_id در ورودی نیست
+// همیشه سفارش‌های همان کاربر احراز هویت‌شده را برمی‌گرداند؛
+// به همین دلیل هیچ user_id در ورودی نیست
 message ListMyOrdersRequest {
   int32 limit = 1;
   int32 offset = 2;
 }
 
 message ListMyOrdersResponse {
-  // برای سبک ماندن لیست، آیتم‌های هر سفارش اینجا خالی برمی‌گردد؛
-  // برای جزئیات کامل باید GetOrder صدا زده شود
+  // برای سبک ماندن لیست، آیتم‌های هر سفارش اینجا خالی
+  // برمی‌گردد؛ برای جزئیات کامل باید GetOrder صدا زده شود
   repeated Order orders = 1;
 }
 

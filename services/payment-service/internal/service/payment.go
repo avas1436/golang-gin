@@ -8,6 +8,7 @@ import (
 	"log"
 	"time"
 
+	"pkg/auth"
 	appErrors "pkg/errors"
 	"pkg/postgres"
 	pb "pkg/proto/payment"
@@ -38,6 +39,15 @@ type EventPublisher interface {
 		paymentID uuid.UUID,
 		orderID uuid.UUID,
 		reason string,
+	) error
+
+	PublishPaymentInitiated(
+		ctx context.Context,
+		paymentID uuid.UUID,
+		orderID uuid.UUID,
+		userID uuid.UUID,
+		redirectURL string,
+		authority string,
 	) error
 }
 
@@ -244,6 +254,23 @@ func (
 		return err
 	}
 
+	// انتشار رویداد payment.initiated حاوی redirect_url
+	// جهت درج در سفارش یا ارسال نوتیفیکیشن
+	if pubErr := s.publisher.PublishPaymentInitiated(
+		ctx,
+		payment.ID,
+		payment.OrderID,
+		payment.UserID,
+		reqOutput.RedirectURL,
+		reqOutput.Authority,
+	); pubErr != nil {
+		log.Printf(
+			"payment-service: failed to publish payment.initiated event for order %s: %v",
+			orderID,
+			pubErr,
+		)
+	}
+
 	log.Printf(
 		"payment-service: payment initialized for order %s, authority: %s",
 		orderID,
@@ -437,10 +464,6 @@ func (
 		)
 	}
 
-	if err := requireAdmin(ctx); err != nil {
-		return nil, err
-	}
-
 	orderID, err := uuid.Parse(req.OrderId)
 	if err != nil {
 		return nil, appErrors.New(
@@ -452,6 +475,22 @@ func (
 	payment, err := s.paymentRepo.GetByOrderID(ctx, orderID)
 	if err != nil {
 		return nil, err
+	}
+
+	// اجازه دسترسی علاوه بر Admin به خود کاربر صاحب پرداخت
+	claims, ok := auth.ClaimsFromContext(ctx)
+	if !ok {
+		return nil, appErrors.New(
+			appErrors.KindPermissionDenied,
+			"you cannot view this payment details",
+		)
+	}
+
+	if claims.Role != roleAdmin && claims.UserID != payment.UserID.String() {
+		return nil, appErrors.New(
+			appErrors.KindPermissionDenied,
+			"you cannot view this payment details",
+		)
 	}
 
 	return toProtoPayment(payment), nil

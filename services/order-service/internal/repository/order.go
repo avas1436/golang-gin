@@ -53,6 +53,14 @@ type OrderRepository interface {
 		id uuid.UUID,
 		next model.OrderStatus,
 	) error
+
+	// UpdatePaymentDetails برای افزودن مشخصات پرداخت به جدول سفارشات
+	UpdatePaymentDetails(
+		ctx context.Context,
+		orderID uuid.UUID,
+		redirectURL string,
+		authority string,
+	) error
 }
 
 // همه چیز در اینجا در یک تراکنش انجام میشود
@@ -262,7 +270,15 @@ func (
 	order := &model.Order{}
 
 	orderQuery := `
-		SELECT id, user_id, status, total_amount, created_at, updated_at
+		SELECT 
+			id,
+			user_id,
+			status,
+			payment_url,
+			payment_authority,
+			total_amount,
+			created_at,
+			updated_at
 		FROM orders
 		WHERE id = $1
 	`
@@ -276,6 +292,8 @@ func (
 		&order.ID,
 		&order.UserID,
 		&order.Status,
+		&order.PaymentURL,
+		&order.PaymentAuthority,
 		&order.TotalAmount,
 		&order.CreatedAt,
 		&order.UpdatedAt,
@@ -400,7 +418,15 @@ func (
 	}
 
 	query := `
-		SELECT id, user_id, status, total_amount, created_at, updated_at
+		SELECT
+			id,
+			user_id,
+			status,
+			payment_url,
+			payment_authority,
+			total_amount,
+			created_at,
+			updated_at
 		FROM orders
 		WHERE user_id = $1
 		ORDER BY created_at DESC
@@ -426,6 +452,8 @@ func (
 			&o.ID,
 			&o.UserID,
 			&o.Status,
+			&o.PaymentURL,
+			&o.PaymentAuthority,
 			&o.TotalAmount,
 			&o.CreatedAt,
 			&o.UpdatedAt,
@@ -490,6 +518,40 @@ func (
 			appErrors.KindAlreadyExists,
 			"order is not in a pending state",
 		)
+	}
+
+	return nil
+}
+
+func (r *orderRepository) UpdatePaymentDetails(
+	ctx context.Context,
+	orderID uuid.UUID,
+	redirectURL string,
+	authority string,
+) error {
+
+	query := `
+		UPDATE orders
+		SET payment_url = $1, payment_authority = $2, updated_at = NOW()
+		WHERE id = $3
+	`
+	result, err := r.pool.Exec(
+		ctx,
+		query,
+		redirectURL,
+		authority,
+		orderID,
+	)
+	if err != nil {
+		return appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to update order payment details",
+		)
+	}
+
+	if result.RowsAffected() == 0 {
+		return appErrors.New(appErrors.KindNotFound, "order not found")
 	}
 
 	return nil

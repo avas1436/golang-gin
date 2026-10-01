@@ -172,6 +172,13 @@ func (p *Payment) CanTransitionTo(next PaymentStatus) bool {
 			next == PaymentStatusCanceled ||
 			next == PaymentStatusExpired
 
+	// افزودن وضعیت awaiting جهت امکان تغییر وضعیت به حالت‌های نهایی
+	case PaymentStatusAwaitingPayment:
+		return next == PaymentStatusCompleted ||
+			next == PaymentStatusFailed ||
+			next == PaymentStatusCanceled ||
+			next == PaymentStatusExpired
+
 	default:
 		return false
 	}

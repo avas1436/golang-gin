@@ -170,3 +170,41 @@ func (
 
 	return nil
 }
+
+// HandlePaymentInitiated رویداد payment.initiated
+// را دریافت کرده و لینک پرداخت را روی سفارش ثبت می‌کند.
+func (
+	c *OrderService,
+) HandlePaymentInitiated(
+	ctx context.Context,
+	event events.PaymentInitiated,
+) error {
+
+	log.Printf(
+		"order-service: payment initiated for order %s, redirect_url: %s",
+		event.OrderID,
+		event.RedirectURL,
+	)
+
+	// ۱. به روزرسانی لینک پرداخت و Authority در جدول orders
+	if err := c.orderRepo.UpdatePaymentDetails(
+		ctx,
+		event.OrderID,
+		event.RedirectURL,
+		event.Authority,
+	); err != nil {
+		log.Printf(
+			"order-service: failed to update payment details for order %s: %v",
+			event.OrderID,
+			err,
+		)
+
+		return appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to update order payment details",
+		)
+	}
+
+	return nil
+}

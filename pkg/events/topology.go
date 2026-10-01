@@ -65,6 +65,9 @@ const (
 	// RoutingKeyPaymentFailed: اعلام شکست یا انصراف از تراکنش پرداخت.
 	RoutingKeyPaymentFailed = "payment.failed"
 
+	// RoutingKeyPaymentInitiated افزودن شناسه و لینک پرداخت به جدول سفارشات
+	RoutingKeyPaymentInitiated = "payment.initiated"
+
 	// --- User Events ---
 
 	// RoutingKeyUserOTPRequested: اعلام درخواست ارسال کد تایید ورود/ثبت‌نام.
@@ -83,6 +86,9 @@ const (
 
 	// QueueOrderPaymentFailed: دریافت نتیجه پرداخت ناموفق جهت لغو سفارش
 	QueueOrderPaymentFailed = "order.payment_failed.queue"
+
+	// QueueOrderPaymentInitiated: دریافت لینک و شناسه پرداخت جهت ذخیره در سفارش
+	QueueOrderPaymentInitiated = "order.payment_initiated.queue"
 
 	// --- Product Service Queues ---
 

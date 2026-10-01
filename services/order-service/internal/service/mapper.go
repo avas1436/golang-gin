@@ -16,7 +16,7 @@ import (
 // می‌ماند — این دقیقاً همان رفتاری است که در order.proto مستند شده
 func toProtoOrder(o *model.Order) *pb.Order {
 
-	return &pb.Order{
+	pOrder := &pb.Order{
 		Id:          o.ID.String(),
 		UserId:      o.UserID.String(),
 		Status:      string(o.Status),
@@ -25,6 +25,16 @@ func toProtoOrder(o *model.Order) *pb.Order {
 		CreatedAt:   timestamppb.New(o.CreatedAt),
 		UpdatedAt:   timestamppb.New(o.UpdatedAt),
 	}
+
+	if o.PaymentURL != nil {
+		pOrder.PaymentUrl = *o.PaymentURL
+	}
+
+	if o.PaymentAuthority != nil {
+		pOrder.PaymentAuthority = *o.PaymentAuthority
+	}
+
+	return pOrder
 }
 
 func toProtoOrderItems(items []*model.OrderItem) []*pb.OrderItem {

@@ -26,16 +26,18 @@ const (
 
 // --- Order ---
 type Order struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	UserId        string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
-	Status        string                 `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`
-	TotalAmount   int64                  `protobuf:"varint,4,opt,name=total_amount,json=totalAmount,proto3" json:"total_amount,omitempty"`
-	Items         []*OrderItem           `protobuf:"bytes,5,rep,name=items,proto3" json:"items,omitempty"`
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Id               string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	UserId           string                 `protobuf:"bytes,2,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	Status           string                 `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`
+	TotalAmount      int64                  `protobuf:"varint,4,opt,name=total_amount,json=totalAmount,proto3" json:"total_amount,omitempty"`
+	Items            []*OrderItem           `protobuf:"bytes,5,rep,name=items,proto3" json:"items,omitempty"`
+	CreatedAt        *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt        *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	PaymentUrl       string                 `protobuf:"bytes,8,opt,name=payment_url,json=paymentUrl,proto3" json:"payment_url,omitempty"`
+	PaymentAuthority string                 `protobuf:"bytes,9,opt,name=payment_authority,json=paymentAuthority,proto3" json:"payment_authority,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *Order) Reset() {
@@ -117,6 +119,20 @@ func (x *Order) GetUpdatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *Order) GetPaymentUrl() string {
+	if x != nil {
+		return x.PaymentUrl
+	}
+	return ""
+}
+
+func (x *Order) GetPaymentAuthority() string {
+	if x != nil {
+		return x.PaymentAuthority
+	}
+	return ""
+}
+
 type OrderItem struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ProductId     string                 `protobuf:"bytes,1,opt,name=product_id,json=productId,proto3" json:"product_id,omitempty"`
@@ -195,10 +211,12 @@ func (x *OrderItem) GetSubtotal() int64 {
 
 // --- Create Order ---
 // عمداً هیچ فیلد user_id یا price/name اینجا نیست: user_id از JWT
-// claims گرفته می‌شود (نه از ورودی کلاینت)، و name/price هم توسط
-// خودِ سرویس از Product Service خوانده می‌شود. اعتماد به این
-// مقادیر اگر از کلاینت می‌آمدند یعنی هرکسی می‌توانست قیمت دلخواه
-// خودش را برای خرید بفرستد
+// claims گرفته می‌شود (نه از ورودی کلاینت)، و name/price هم
+// توسط
+// خودِ سرویس از Product Service خوانده می‌شود. اعتماد به
+// این
+// مقادیر اگر از کلاینت می‌آمدند یعنی هرکسی می‌توانست قیمت
+// دلخواه خودش را برای خرید بفرستد
 type CreateOrderRequest struct {
 	state         protoimpl.MessageState    `protogen:"open.v1"`
 	Items         []*CreateOrderItemRequest `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
@@ -341,8 +359,8 @@ func (x *GetOrderRequest) GetId() string {
 }
 
 // --- List My Orders ---
-// همیشه سفارش‌های همان کاربر احراز هویت‌شده را برمی‌گرداند؛ به
-// همین دلیل هیچ user_id در ورودی نیست
+// همیشه سفارش‌های همان کاربر احراز هویت‌شده را برمی‌گرداند؛
+// به همین دلیل هیچ user_id در ورودی نیست
 type ListMyOrdersRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Limit         int32                  `protobuf:"varint,1,opt,name=limit,proto3" json:"limit,omitempty"`
@@ -397,8 +415,8 @@ func (x *ListMyOrdersRequest) GetOffset() int32 {
 
 type ListMyOrdersResponse struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// برای سبک ماندن لیست، آیتم‌های هر سفارش اینجا خالی برمی‌گردد؛
-	// برای جزئیات کامل باید GetOrder صدا زده شود
+	// برای سبک ماندن لیست، آیتم‌های هر سفارش اینجا خالی
+	// برمی‌گردد؛ برای جزئیات کامل باید GetOrder صدا زده شود
 	Orders        []*Order `protobuf:"bytes,1,rep,name=orders,proto3" json:"orders,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -445,7 +463,7 @@ var File_order_proto protoreflect.FileDescriptor
 
 const file_order_proto_rawDesc = "" +
 	"\n" +
-	"\vorder.proto\x12\x05order\x1a\x1fgoogle/protobuf/timestamp.proto\"\x89\x02\n" +
+	"\vorder.proto\x12\x05order\x1a\x1fgoogle/protobuf/timestamp.proto\"\xd7\x02\n" +
 	"\x05Order\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\tR\x06userId\x12\x16\n" +
@@ -455,7 +473,10 @@ const file_order_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xa4\x01\n" +
+	"updated_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12\x1f\n" +
+	"\vpayment_url\x18\b \x01(\tR\n" +
+	"paymentUrl\x12+\n" +
+	"\x11payment_authority\x18\t \x01(\tR\x10paymentAuthority\"\xa4\x01\n" +
 	"\tOrderItem\x12\x1d\n" +
 	"\n" +
 	"product_id\x18\x01 \x01(\tR\tproductId\x12!\n" +

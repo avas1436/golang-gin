@@ -41,3 +41,15 @@ type PaymentFailed struct {
 
 	FailedAt time.Time `json:"failed_at"`
 }
+
+// PaymentInitiated بعد از درخواست پرداخت سفارش منتشر میشود
+// و سپس سرویس سفارشات مشخصات لازم برای پرداخت را داخل جدول سفارشات ثبت میکند
+type PaymentInitiated struct {
+	EventID     uuid.UUID `json:"event_id"`
+	PaymentID   uuid.UUID `json:"payment_id"`
+	OrderID     uuid.UUID `json:"order_id"`
+	UserID      uuid.UUID `json:"user_id"`
+	RedirectURL string    `json:"redirect_url"`
+	Authority   string    `json:"authority"`
+	CreatedAt   time.Time `json:"created_at"`
+}
