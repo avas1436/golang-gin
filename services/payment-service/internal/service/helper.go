@@ -2,36 +2,29 @@
 
 package service
 
-import (
-	"context"
-
-	"pkg/auth"
-	appErrors "pkg/errors"
-)
-
 const roleAdmin = "admin"
 
 // requireAdmin بررسی می‌کند که درخواست‌کننده نقش ادمین داشته باشد؛
 // همان الگوی requireAdmin در product-service
-func requireAdmin(ctx context.Context) error {
+// func requireAdmin(ctx context.Context) error {
 
-	claims, ok := auth.ClaimsFromContext(ctx)
-	if !ok {
-		return appErrors.New(
-			appErrors.KindUnauthenticated,
-			"authentication required",
-		)
-	}
+// 	claims, ok := auth.ClaimsFromContext(ctx)
+// 	if !ok {
+// 		return appErrors.New(
+// 			appErrors.KindUnauthenticated,
+// 			"authentication required",
+// 		)
+// 	}
 
-	if claims.Role != roleAdmin {
-		return appErrors.New(
-			appErrors.KindPermissionDenied,
-			"only admins can perform this action",
-		)
-	}
+// 	if claims.Role != roleAdmin {
+// 		return appErrors.New(
+// 			appErrors.KindPermissionDenied,
+// 			"only admins can perform this action",
+// 		)
+// 	}
 
-	return nil
-}
+// 	return nil
+// }
 
 // simulateGatewayAndFinalize نتیجه‌ی شبیه‌سازی‌شده‌ی درگاه بانکی را
 // روی رکورد پرداخت اعمال کرده و رویداد نتیجه (payment.completed یا

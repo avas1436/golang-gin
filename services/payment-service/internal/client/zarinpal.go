@@ -23,43 +23,6 @@ type zarinpalClient struct {
 	httpClient  *http.Client
 }
 
-// Structهای داخلی API v4 زرین‌پال
-type zarinpalReqPayload struct {
-	MerchantID  string            `json:"merchant_id"`
-	Amount      int64             `json:"amount"`
-	CallbackURL string            `json:"callback_url"`
-	Description string            `json:"description"`
-	Metadata    map[string]string `json:"metadata,omitempty"`
-}
-
-// پاسخ API زرین‌پال برای ایجاد تراکنش است.
-type zarinpalReqResponse struct {
-	Data struct {
-		Code      int    `json:"code"`
-		Message   string `json:"message"`
-		Authority string `json:"authority"`
-	} `json:"data"`
-	Errors []any `json:"errors"`
-}
-
-// بدنه درخواست Verify در API زرین‌پال است.
-type zarinpalVerifyPayload struct {
-	MerchantID string `json:"merchant_id"`
-	Amount     int64  `json:"amount"`
-	Authority  string `json:"authority"`
-}
-
-// پاسخ API زرین‌پال برای Verify است.
-type zarinpalVerifyResponse struct {
-	Data struct {
-		Code    int    `json:"code"`
-		Message string `json:"message"`
-		RefID   int64  `json:"ref_id"`
-		CardPan string `json:"card_pan"`
-	} `json:"data"`
-	Errors []any `json:"errors"`
-}
-
 func (
 	z *zarinpalClient,
 ) RequestPayment(
@@ -260,20 +223,6 @@ func (
 		}
 	}()
 
-	// بررسی status code مربوط به HTTP.
-	if resp.StatusCode < http.StatusOK ||
-		resp.StatusCode >= http.StatusMultipleChoices {
-
-		return nil, appErrors.New(
-			appErrors.KindInternal,
-			fmt.Sprintf(
-				"zarinpal returned unexpected HTTP status %d",
-				resp.StatusCode,
-			),
-		)
-
-	}
-
 	var zResp zarinpalVerifyResponse
 	if err := json.NewDecoder(resp.Body).Decode(&zResp); err != nil {
 		return nil, appErrors.Wrap(
@@ -283,12 +232,38 @@ func (
 		)
 	}
 
-	// کد 100 یعنی پرداخت با موفقیت تأیید شده است.
-	//
-	// کد 101 یعنی پرداخت قبلاً Verify شده است.
-	//  بنابراین هر دو حالت را موفق در نظر می‌گیریم.
-	if zResp.Data.Code != 100 && zResp.Data.Code != 101 {
+	// تفکیک خطاهای HTTP زرین‌پال:
+	// اگر زرین‌پال HTTP 400 برگرداند یعنی تراکنش رد شده است (KindInvalidInput).
+	// اگر ۵xx یا خطای شبکه باشد، KindInternal داده می‌شود.
+	if resp.StatusCode < http.StatusOK ||
+		resp.StatusCode >= http.StatusMultipleChoices {
 
+		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+
+			msg := zResp.Data.Message
+
+			if msg == "" {
+				msg = fmt.Sprintf(
+					"gateway rejected transaction with status %d",
+					resp.StatusCode,
+				)
+			}
+
+			return &PaymentVerifyOutput{Success: false}, appErrors.New(
+				appErrors.KindInvalidInput,
+				msg,
+			)
+		}
+
+		return nil, appErrors.New(
+			appErrors.KindInternal,
+			fmt.Sprintf("zarinpal returned unexpected HTTP status %d", resp.StatusCode),
+		)
+	}
+
+	// کد 100 یعنی پرداخت با موفقیت تأیید شده است.
+	// کد 101 یعنی پرداخت قبلاً Verify شده است.
+	if zResp.Data.Code != 100 && zResp.Data.Code != 101 {
 		return &PaymentVerifyOutput{
 				Success: false,
 			}, appErrors.New(

@@ -50,7 +50,6 @@ func (
 	payment, err := s.paymentService.VerifyPayment(
 		ctx,
 		req.Authority,
-		req.Status,
 	)
 	if err != nil {
 		return nil, grpcerrors.FromAppError(err, "payment-service")

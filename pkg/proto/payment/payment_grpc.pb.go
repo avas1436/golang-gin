@@ -31,8 +31,8 @@ const (
 type PaymentServiceClient interface {
 	// دریافت اطلاعات پرداخت (نیازمند احراز هویت)
 	GetPaymentByOrderID(ctx context.Context, in *GetPaymentByOrderIDRequest, opts ...grpc.CallOption) (*Payment, error)
-	// تایید و استعلام پرداخت از درگاه زرین‌پال (فراخوانی توسط API Gateway در
-	// کالبک عمومی)
+	// تایید و استعلام پرداخت از درگاه زرین‌پال (فراخوانی توسط API Gateway
+	// در کالبک عمومی)
 	VerifyPayment(ctx context.Context, in *VerifyPaymentRequest, opts ...grpc.CallOption) (*VerifyPaymentResponse, error)
 }
 
@@ -70,8 +70,8 @@ func (c *paymentServiceClient) VerifyPayment(ctx context.Context, in *VerifyPaym
 type PaymentServiceServer interface {
 	// دریافت اطلاعات پرداخت (نیازمند احراز هویت)
 	GetPaymentByOrderID(context.Context, *GetPaymentByOrderIDRequest) (*Payment, error)
-	// تایید و استعلام پرداخت از درگاه زرین‌پال (فراخوانی توسط API Gateway در
-	// کالبک عمومی)
+	// تایید و استعلام پرداخت از درگاه زرین‌پال (فراخوانی توسط API Gateway
+	// در کالبک عمومی)
 	VerifyPayment(context.Context, *VerifyPaymentRequest) (*VerifyPaymentResponse, error)
 	mustEmbedUnimplementedPaymentServiceServer()
 }

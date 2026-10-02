@@ -286,7 +286,6 @@ func (
 ) VerifyPayment(
 	ctx context.Context,
 	authority string,
-	zarinpalStatus string,
 ) (
 	*model.Payment,
 	error,
@@ -317,40 +316,7 @@ func (
 		)
 	}
 
-	// ۲. بررسی انصراف کاربر یا خطای درگاه قبل از استعلام
-	if zarinpalStatus != "OK" {
-
-		reason := "payment canceled by user or rejected by bank"
-
-		if markErr := payment.MarkFailed(reason); markErr != nil {
-			return nil, markErr
-		}
-
-		if updateErr := s.paymentRepo.Update(
-			ctx,
-			payment,
-		); updateErr != nil {
-
-			return nil, updateErr
-		}
-
-		if pubErr := s.publisher.PublishPaymentFailed(
-			ctx,
-			payment.ID,
-			payment.OrderID,
-			reason,
-		); pubErr != nil {
-			log.Printf(
-				"payment-service: failed to publish payment.failed event for order %s: %v",
-				payment.OrderID,
-				pubErr,
-			)
-		}
-
-		return payment, nil
-	}
-
-	// ۳. استعلام تاییدیه پرداخت از API زرین‌پال (Verify)
+	// ۴. استعلام تاییدیه پرداخت از API زرین‌پال (Verify)
 	verifyInput := client.PaymentVerifyInput{
 		Authority: authority,
 		Amount:    payment.Amount,
@@ -412,7 +378,7 @@ func (
 		)
 	}
 
-	// ۴. ثبت تایید موفق و ذخیره RefID (شماره پیگیری بانک)
+	// ۵. ثبت تایید موفق و ذخیره RefID شماره پیگیری بانک
 	if err := payment.MarkCompleted(
 		"zarinpal",
 		verifyOutput.RefID,
@@ -426,7 +392,7 @@ func (
 		return nil, err
 	}
 
-	// ۵. انتشار رویداد موفقیت پرداخت روی RabbitMQ برای order-service
+	// ۶. انتشار رویداد موفقیت پرداخت روی RabbitMQ برای order-service
 	if err := s.publisher.PublishPaymentCompleted(
 		ctx,
 		payment.ID,

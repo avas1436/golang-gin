@@ -34,6 +34,43 @@ type PaymentVerifyOutput struct {
 	CardPan string // شماره کارت ماسک‌شده پرداخت‌کننده
 }
 
+// Structهای داخلی API v4 زرین‌پال
+type zarinpalReqPayload struct {
+	MerchantID  string            `json:"merchant_id"`
+	Amount      int64             `json:"amount"`
+	CallbackURL string            `json:"callback_url"`
+	Description string            `json:"description"`
+	Metadata    map[string]string `json:"metadata,omitempty"`
+}
+
+// پاسخ API زرین‌پال برای ایجاد تراکنش است.
+type zarinpalReqResponse struct {
+	Data struct {
+		Code      int    `json:"code"`
+		Message   string `json:"message"`
+		Authority string `json:"authority"`
+	} `json:"data"`
+	Errors []any `json:"errors"`
+}
+
+// بدنه درخواست Verify در API زرین‌پال است.
+type zarinpalVerifyPayload struct {
+	MerchantID string `json:"merchant_id"`
+	Amount     int64  `json:"amount"`
+	Authority  string `json:"authority"`
+}
+
+// پاسخ API زرین‌پال برای Verify است.
+type zarinpalVerifyResponse struct {
+	Data struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+		RefID   int64  `json:"ref_id"`
+		CardPan string `json:"card_pan"`
+	} `json:"data"`
+	Errors []any `json:"errors"`
+}
+
 // GatewayClient قرارداد مشترک تمام درگاه‌های پرداخت است.
 //
 // # Service فقط با این interface کار می‌کند و

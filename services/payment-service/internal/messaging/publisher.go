@@ -68,6 +68,37 @@ func (
 	return p.publisher.Publish(ctx, events.RoutingKeyPaymentFailed, event)
 }
 
+// PublishPaymentInitiated اضافه شد تا اینترفیس service.EventPublisher کامل شود
+func (
+	p *RabbitMQEventPublisher,
+) PublishPaymentInitiated(
+	ctx context.Context,
+	paymentID uuid.UUID,
+	orderID uuid.UUID,
+	userID uuid.UUID,
+	redirectURL string,
+	authority string,
+) error {
+
+	event := events.PaymentInitiated{
+		PaymentID:   paymentID,
+		OrderID:     orderID,
+		UserID:      userID,
+		RedirectURL: redirectURL,
+		Authority:   authority,
+	}
+
+	if err := p.publisher.Publish(
+		ctx,
+		events.RoutingKeyPaymentInitiated,
+		event,
+	); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // Close بستن کانال RabbitMQ مربوط به Publisher
 func (p *RabbitMQEventPublisher) Close() error {
 	if p == nil || p.publisher == nil {

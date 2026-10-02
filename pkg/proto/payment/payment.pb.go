@@ -160,8 +160,8 @@ func (x *Payment) GetUpdatedAt() *timestamppb.Timestamp {
 
 // --- Get Payment By Order ID ---
 // این تنها متد gRPC این سرویس است و صرفاً برای دیباگ/ادمین وجود
-// دارد؛ طبق معماری Saga، Order Service نتیجه‌ی پرداخت را از
-// طریق
+// دارد؛ طبق معماری Saga، Order Service نتیجه‌ی پرداخت را
+// از طریق
 // رویدادهای payment.completed/payment.failed می‌گیرد نه با
 // فراخوانی sync این متد، و کلاینت نهایی هم باید وضعیت سفارش را از Order Service
 // بپرسد، نه مستقیم از Payment Service
@@ -213,7 +213,6 @@ func (x *GetPaymentByOrderIDRequest) GetOrderId() string {
 type VerifyPaymentRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Authority     string                 `protobuf:"bytes,1,opt,name=authority,proto3" json:"authority,omitempty"`
-	Status        string                 `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -251,13 +250,6 @@ func (*VerifyPaymentRequest) Descriptor() ([]byte, []int) {
 func (x *VerifyPaymentRequest) GetAuthority() string {
 	if x != nil {
 		return x.Authority
-	}
-	return ""
-}
-
-func (x *VerifyPaymentRequest) GetStatus() string {
-	if x != nil {
-		return x.Status
 	}
 	return ""
 }
@@ -344,10 +336,9 @@ const file_payment_proto_rawDesc = "" +
 	"\n" +
 	"updated_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"7\n" +
 	"\x1aGetPaymentByOrderIDRequest\x12\x19\n" +
-	"\border_id\x18\x01 \x01(\tR\aorderId\"L\n" +
+	"\border_id\x18\x01 \x01(\tR\aorderId\"4\n" +
 	"\x14VerifyPaymentRequest\x12\x1c\n" +
-	"\tauthority\x18\x01 \x01(\tR\tauthority\x12\x16\n" +
-	"\x06status\x18\x02 \x01(\tR\x06status\"a\n" +
+	"\tauthority\x18\x01 \x01(\tR\tauthority\"a\n" +
 	"\x15VerifyPaymentResponse\x12\x19\n" +
 	"\border_id\x18\x01 \x01(\tR\aorderId\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12\x15\n" +
