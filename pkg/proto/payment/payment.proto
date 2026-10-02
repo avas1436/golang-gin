@@ -22,12 +22,14 @@ message Payment {
   google.protobuf.Struct metadata = 10;
   google.protobuf.Timestamp created_at = 11;
   google.protobuf.Timestamp updated_at = 12;
+  string authority = 13;
+  string redirect_url = 14;
 }
 
 // --- Get Payment By Order ID ---
 // این تنها متد gRPC این سرویس است و صرفاً برای دیباگ/ادمین وجود
-// دارد؛ طبق معماری Saga، Order Service نتیجه‌ی پرداخت را
-// از طریق
+// دارد؛ طبق معماری Saga، Order Service نتیجه‌ی
+// پرداخت را از طریق
 // رویدادهای payment.completed/payment.failed می‌گیرد نه با
 // فراخوانی sync این متد، و کلاینت نهایی هم باید وضعیت سفارش را از Order Service
 // بپرسد، نه مستقیم از Payment Service
@@ -50,7 +52,7 @@ service PaymentService {
   // دریافت اطلاعات پرداخت (نیازمند احراز هویت)
   rpc GetPaymentByOrderID(GetPaymentByOrderIDRequest) returns (Payment);
 
-  // تایید و استعلام پرداخت از درگاه زرین‌پال (فراخوانی توسط API Gateway
-  // در کالبک عمومی)
+  // تایید و استعلام پرداخت از درگاه زرین‌پال (فراخوانی توسط
+  // API Gateway در کالبک عمومی)
   rpc VerifyPayment(VerifyPaymentRequest) returns (VerifyPaymentResponse);
 }

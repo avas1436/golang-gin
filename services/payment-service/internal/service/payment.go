@@ -371,11 +371,7 @@ func (
 			)
 		}
 
-		return nil, appErrors.Wrap(
-			appErrors.KindInvalidInput,
-			err,
-			"payment verification failed",
-		)
+		return payment, nil
 	}
 
 	// ۵. ثبت تایید موفق و ذخیره RefID شماره پیگیری بانک

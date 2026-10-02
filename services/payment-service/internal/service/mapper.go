@@ -18,7 +18,11 @@ func toProtoPayment(p *model.Payment) *pb.Payment {
 
 	meta, _ := structpb.NewStruct(p.Metadata)
 
-	var gatewayName, gatewayRefID, failureReason string
+	var gatewayName,
+		gatewayRefID,
+		failureReason,
+		authority,
+		redirectURL string
 
 	if p.GatewayName != nil {
 		gatewayName = *p.GatewayName
@@ -30,6 +34,14 @@ func toProtoPayment(p *model.Payment) *pb.Payment {
 		failureReason = *p.FailureReason
 	}
 
+	if p.Authority != nil {
+		authority = *p.Authority
+	}
+
+	if p.RedirectURL != nil {
+		redirectURL = *p.RedirectURL
+	}
+
 	return &pb.Payment{
 		Id:            p.ID.String(),
 		OrderId:       p.OrderID.String(),
@@ -39,6 +51,8 @@ func toProtoPayment(p *model.Payment) *pb.Payment {
 		Status:        string(p.Status),
 		GatewayName:   gatewayName,
 		GatewayRefId:  gatewayRefID,
+		Authority:     authority,
+		RedirectUrl:   redirectURL,
 		FailureReason: failureReason,
 		Metadata:      meta,
 		CreatedAt:     timestamppb.New(p.CreatedAt),

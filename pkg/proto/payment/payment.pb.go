@@ -40,6 +40,8 @@ type Payment struct {
 	Metadata      *structpb.Struct       `protobuf:"bytes,10,opt,name=metadata,proto3" json:"metadata,omitempty"`
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	Authority     string                 `protobuf:"bytes,13,opt,name=authority,proto3" json:"authority,omitempty"`
+	RedirectUrl   string                 `protobuf:"bytes,14,opt,name=redirect_url,json=redirectUrl,proto3" json:"redirect_url,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -158,10 +160,24 @@ func (x *Payment) GetUpdatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
+func (x *Payment) GetAuthority() string {
+	if x != nil {
+		return x.Authority
+	}
+	return ""
+}
+
+func (x *Payment) GetRedirectUrl() string {
+	if x != nil {
+		return x.RedirectUrl
+	}
+	return ""
+}
+
 // --- Get Payment By Order ID ---
 // این تنها متد gRPC این سرویس است و صرفاً برای دیباگ/ادمین وجود
-// دارد؛ طبق معماری Saga، Order Service نتیجه‌ی پرداخت را
-// از طریق
+// دارد؛ طبق معماری Saga، Order Service نتیجه‌ی
+// پرداخت را از طریق
 // رویدادهای payment.completed/payment.failed می‌گیرد نه با
 // فراخوانی sync این متد، و کلاینت نهایی هم باید وضعیت سفارش را از Order Service
 // بپرسد، نه مستقیم از Payment Service
@@ -318,7 +334,7 @@ var File_payment_proto protoreflect.FileDescriptor
 
 const file_payment_proto_rawDesc = "" +
 	"\n" +
-	"\rpayment.proto\x12\apayment\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/protobuf/struct.proto\"\xb4\x03\n" +
+	"\rpayment.proto\x12\apayment\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/protobuf/struct.proto\"\xf5\x03\n" +
 	"\aPayment\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x19\n" +
 	"\border_id\x18\x02 \x01(\tR\aorderId\x12\x17\n" +
@@ -334,7 +350,9 @@ const file_payment_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"7\n" +
+	"updated_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12\x1c\n" +
+	"\tauthority\x18\r \x01(\tR\tauthority\x12!\n" +
+	"\fredirect_url\x18\x0e \x01(\tR\vredirectUrl\"7\n" +
 	"\x1aGetPaymentByOrderIDRequest\x12\x19\n" +
 	"\border_id\x18\x01 \x01(\tR\aorderId\"4\n" +
 	"\x14VerifyPaymentRequest\x12\x1c\n" +
