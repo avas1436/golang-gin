@@ -3,7 +3,6 @@
 package service
 
 import (
-	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/fx"
 
 	"payment-service/config"
@@ -17,7 +16,7 @@ import (
 // خود PaymentService مسئول ساختن dependencyهایش نیست.
 // این کار توسط Fx و Moduleهای مربوط به هر package انجام می‌شود.
 func NewPaymentService(
-	pool *pgxpool.Pool,
+	txManager repository.TxManager,
 	paymentRepo repository.PaymentRepository,
 	outboxRepo repository.OutboxRepository,
 	gateway client.GatewayClient,
@@ -26,7 +25,7 @@ func NewPaymentService(
 ) *PaymentService {
 
 	return &PaymentService{
-		pool:        pool,
+		txManager:   txManager,
 		paymentRepo: paymentRepo,
 		outboxRepo:  outboxRepo,
 		gateway:     gateway,

@@ -10,14 +10,11 @@ import (
 	"payment-service/internal/repository"
 	appErrors "pkg/errors"
 	"pkg/events"
-	"pkg/postgres"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
-// TODO: باید یک ورکر برای اجرای این تابع بسازم
 // ExpireStalePayments جهت انقضای دوره‌ای پرداخت‌های معلق
 // آزادسازی موجودی‌های رزرو شده در سفارشات رهاشده و تغییر وضعیت
 // FSM مدل دامنه به PaymentStatusExpired.
@@ -109,13 +106,11 @@ func (
 	}
 
 	// ۳. اجرای اتمیک در یک تراکنش: تغییر وضعیت + ثبت رویداد
-	err = postgres.WithTx(
+	err = s.txManager.ExecInTx(
 		ctx,
-		s.pool,
-		func(tx pgx.Tx) error {
-			txPaymentRepo := repository.NewPaymentRepository(tx)
+		func(repos repository.Repositories) error {
 
-			return txPaymentRepo.MarkExpiredAtomic(
+			return repos.Payment.MarkExpiredAtomic(
 				ctx,
 				payment.ID,
 				outboxEvent,

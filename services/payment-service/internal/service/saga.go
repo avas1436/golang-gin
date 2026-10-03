@@ -9,10 +9,9 @@ import (
 	"payment-service/internal/client"
 	"payment-service/internal/model"
 	"payment-service/internal/repository"
-	"pkg/postgres"
+	"pkg/events"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 // HandleOrderCreated زمانی اجرا می‌شود که payment-service
@@ -51,24 +50,18 @@ func (
 
 	var alreadyHandled bool
 
-	err := postgres.WithTx(
+	// ۱. استفاده از TxManager برای اجرای اتمیک و دریافت
+	// Repositoryهای ایزوله‌شده
+	err := s.txManager.ExecInTx(
 		ctx,
-		s.pool,
-		func(tx pgx.Tx) error {
+		func(
+			repos repository.Repositories,
+		) error {
 
-			// این Repository مخصوص همین Transaction است.
-			//
-			// بنابراین تمام Queryهای paymentRepo داخل همین tx
-			// اجرا می‌شوند.
-			txPaymentRepo := repository.NewPaymentRepository(tx)
-
-			// Event repository نیز روی همان Transaction کار می‌کند.
-			eventRepo := repository.NewEventRepository(tx)
-
-			alreadyProcessed, err := eventRepo.MarkProcessed(
+			alreadyProcessed, err := repos.Event.MarkProcessed(
 				ctx,
 				eventID,
-				"order.created",
+				events.RoutingKeyOrderCreated,
 				&orderID,
 				nil,
 			)
@@ -85,7 +78,8 @@ func (
 				return nil
 			}
 
-			return txPaymentRepo.Create(ctx, payment)
+			// ثبت پرداخت جدید روی همان تراکنش
+			return repos.Payment.Create(ctx, payment)
 		},
 	)
 
@@ -188,7 +182,8 @@ func (
 		return nil
 	}
 
-	// ثبت Authority و RedirectURL در دیتابیس و تغییر وضعیت به AWAITING_PAYMENT
+	// ثبت Authority و RedirectURL در دیتابیس
+	// و تغییر وضعیت به AWAITING_PAYMENT
 	if err := payment.MarkAwaitingPayment(
 		"zarinpal",
 		reqOutput.Authority,
