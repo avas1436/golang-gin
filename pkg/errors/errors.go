@@ -23,6 +23,7 @@ const (
 	KindUnauthenticated
 	KindPermissionDenied
 	KindInternal
+	KindConflict
 )
 
 // Error نوع خطای استاندارد این پروژه است: یک Kind قابل‌طبقه‌بندی

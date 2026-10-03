@@ -496,7 +496,7 @@ func (
 
 	if result.RowsAffected() == 0 {
 		return appErrors.New(
-			appErrors.KindAlreadyExists,
+			appErrors.KindConflict,
 			"payment is not in an awaiting state",
 		)
 	}

@@ -135,6 +135,14 @@ func (
 		payment,
 	); err != nil {
 
+		// اگر به دلیل همزمانی خطا خورد، دوباره دیتابیس را استعلام کن
+		if appErrors.GetKind(err) == appErrors.KindAlreadyExists ||
+			appErrors.GetKind(err) == appErrors.KindConflict {
+
+			return s.handleConcurrentVerifyFallback(ctx, authority)
+
+		}
+
 		return nil, err
 	}
 
@@ -155,4 +163,33 @@ func (
 	}
 
 	return payment, nil
+}
+
+// handleConcurrentVerifyFallback در صورت بروز Race Condition، آخرین وضعیت رکورد را استعلام کرده و به صورت Idempotent پاسخ می‌دهد.
+func (
+	s *PaymentService,
+) handleConcurrentVerifyFallback(
+	ctx context.Context,
+	authority string,
+) (
+	*model.Payment,
+	error,
+) {
+
+	latestPayment, err := s.paymentRepo.GetByAuthority(ctx, authority)
+	if err != nil {
+		return nil, err
+	}
+
+	// اگر درخواست همزمانِ قبلی وضعیت را به Completed برده باشد،
+	// همان رکورد بدون انتشار مجدد Event برگردانده می‌شود.
+	if latestPayment.Status == model.PaymentStatusCompleted {
+		log.Printf(
+			"payment-service: resolved concurrent verify as idempotent success for payment %s",
+			latestPayment.ID,
+		)
+		return latestPayment, nil
+	}
+
+	return latestPayment, nil
 }
