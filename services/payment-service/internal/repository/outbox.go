@@ -27,10 +27,6 @@ type outboxRepository struct {
 	db postgres.DBTX
 }
 
-func NewOutboxRepository(db postgres.DBTX) OutboxRepository {
-	return &outboxRepository{db: db}
-}
-
 // Create یک رویداد را در جدول outbox_events ثبت می‌کند.
 // فراخوانی این متد باید داخل یک تراکنش دیتابیس انجام شود تا
 // atomicity بین تغییر دامنه و ثبت رویداد تضمین شود

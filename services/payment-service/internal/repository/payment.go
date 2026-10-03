@@ -76,6 +76,13 @@ type PaymentRepository interface {
 		paymentID uuid.UUID,
 		outboxEvent *model.OutboxEvent,
 	) error
+
+	// UpdateFromAwaiting برای جلوگیری از ریس کاندیشن این متد تنها
+	// اجازه تغییر پرداخت های در وضعیت در انتظار پرداخت رو میده
+	UpdateFromAwaiting(
+		ctx context.Context,
+		payment *model.Payment,
+	) error
 }
 
 type paymentRepository struct {
@@ -264,7 +271,7 @@ func (
             created_at,
             updated_at
         FROM payments
-        WHERE authority = $1 AND status = 'awaiting'
+        WHERE authority = $1
 		LIMIT 1;
     `
 
@@ -436,6 +443,65 @@ func (
 	return nil
 }
 
+func (
+	r *paymentRepository,
+) UpdateFromAwaiting(
+	ctx context.Context,
+	payment *model.Payment,
+) error {
+
+	if payment == nil {
+		return appErrors.New(
+			appErrors.KindInvalidInput,
+			"payment cannot be nil",
+		)
+	}
+
+	query := `
+        UPDATE payments
+        SET
+            status         = $1,
+            gateway_name   = $2,
+            gateway_ref_id = $3,
+            authority      = $4,
+            redirect_url   = $5,
+            failure_reason = $6,
+            metadata       = $7,
+            updated_at     = $8
+        WHERE id = $9 AND status = 'awaiting';
+    `
+
+	result, err := r.db.Exec(
+		ctx,
+		query,
+		payment.Status,
+		payment.GatewayName,
+		payment.GatewayRefID,
+		payment.Authority,
+		payment.RedirectURL,
+		payment.FailureReason,
+		payment.Metadata,
+		payment.UpdatedAt,
+		payment.ID,
+	)
+	if err != nil {
+		return appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to update payment from awaiting",
+		)
+	}
+
+	if result.RowsAffected() == 0 {
+		return appErrors.New(
+			appErrors.KindAlreadyExists,
+			"payment is not in an awaiting state",
+		)
+	}
+
+	return nil
+}
+
 // شناسایی پرداخت‌هایی که کاربر وارد درگاه شده اما عملیات را تکمیل نکرده
 // و کالبک بانک فراخوانی نشده است
 // با شرط status = 'awaiting'
@@ -468,7 +534,7 @@ func (
 			updated_at
 		FROM payments
 		WHERE status = 'awaiting'
-		  AND created_at < $1
+		  AND updated_at < $1
 		ORDER BY created_at ASC
 		LIMIT $2
 	`

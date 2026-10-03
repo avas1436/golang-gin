@@ -19,6 +19,7 @@ import (
 func NewPaymentService(
 	pool *pgxpool.Pool,
 	paymentRepo repository.PaymentRepository,
+	outboxRepo repository.OutboxRepository,
 	gateway client.GatewayClient,
 	publisher EventPublisher,
 	cfg *config.Config,
@@ -27,6 +28,7 @@ func NewPaymentService(
 	return &PaymentService{
 		pool:        pool,
 		paymentRepo: paymentRepo,
+		outboxRepo:  outboxRepo,
 		gateway:     gateway,
 		publisher:   publisher,
 		cfg:         cfg,
