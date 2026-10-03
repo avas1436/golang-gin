@@ -60,8 +60,8 @@ WHERE published_at IS NOT NULL;
 -- کوئری ExpireStalePayments که قرار است روی شرط WHERE status = 'PENDING' 
 -- AND created_at < cutoff اجرا شود، با سرعت بالا (Index Scan) اجرا میشود
 CREATE INDEX IF NOT EXISTS idx_payments_stale_lookup 
-ON payments (status, created_at) 
-WHERE status = 'PENDING';
+ON payments (updated_at ASC)
+WHERE status = 'awaiting';
 
 -- ==========================================
 -- 3. Auto-update updated_at Trigger
