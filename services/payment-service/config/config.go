@@ -11,11 +11,12 @@ import (
 type Config struct {
 	GRPCPort string
 
-	Postgres commonConfig.PostgresConfig
-	Redis    commonConfig.RedisConfig
-	RabbitMQ commonConfig.RabbitMQConfig
-	JWT      commonConfig.JWTConfig
-	ZarinPal commonConfig.ZarinpalConfig
+	Postgres         commonConfig.PostgresConfig
+	Redis            commonConfig.RedisConfig
+	RabbitMQ         commonConfig.RabbitMQConfig
+	JWT              commonConfig.JWTConfig
+	ZarinPal         commonConfig.ZarinpalConfig
+	ExpirationWorker commonConfig.WorkerConfig
 }
 
 // Load مقادیر را از متغیرهای محیطی می‌خواند.
@@ -92,6 +93,22 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
+	expirationInterval, err := env.Duration(
+		"PAYMENT_EXPIRATION_INTERVAL",
+		5*time.Minute,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	expirationStaleTimeout, err := env.Duration(
+		"PAYMENT_EXPIRATION_STALE_TIMEOUT",
+		15*time.Minute,
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	cfg := &Config{
 		GRPCPort: env.String("GRPC_PORT", "50054"),
 
@@ -130,6 +147,11 @@ func Load() (*Config, error) {
 			MerchantID:         merchantID,
 			IsSandbox:          isSandbox,
 			PaymentCallbackURL: paymentCallbackURL,
+		},
+
+		ExpirationWorker: commonConfig.WorkerConfig{
+			Interval:     expirationInterval,
+			StaleTimeout: expirationStaleTimeout,
 		},
 	}
 

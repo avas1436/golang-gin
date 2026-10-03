@@ -17,6 +17,7 @@ import (
 	"payment-service/internal/repository"
 	"payment-service/internal/server"
 	"payment-service/internal/service"
+	"payment-service/internal/worker"
 
 	"go.uber.org/fx"
 )
@@ -72,5 +73,8 @@ func main() {
 
 		// سرور gRPC
 		server.Module,
+
+		// ورکر حذف پرداخت های بلاتکلیف
+		worker.Module,
 	).Run()
 }
