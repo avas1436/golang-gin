@@ -53,3 +53,15 @@ type PaymentInitiated struct {
 	Authority   string    `json:"authority"`
 	CreatedAt   time.Time `json:"created_at"`
 }
+
+// PaymentExpired وقتی منتشر می‌شود که یک پرداخت در وضعیت pending
+// بیش از حد مجاز بلاتکلیف بماند و توسط ورکر انقضا expire شود.
+//
+// Order Service با دریافت این رویداد باید سفارش را کنسل کرده و
+// موجودی رزروشده را آزاد کند، دقیقاً مشابه payment.failed
+type PaymentExpired struct {
+	EventID   uuid.UUID `json:"event_id"`
+	OrderID   uuid.UUID `json:"order_id"`
+	PaymentID uuid.UUID `json:"payment_id"`
+	ExpiredAt time.Time `json:"expired_at"`
+}

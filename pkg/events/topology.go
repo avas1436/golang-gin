@@ -68,6 +68,9 @@ const (
 	// RoutingKeyPaymentInitiated افزودن شناسه و لینک پرداخت به جدول سفارشات
 	RoutingKeyPaymentInitiated = "payment.initiated"
 
+	// RoutingKeyPaymentExpired اعلام انقضای زمان پرداخت بلاتکلیف
+	RoutingKeyPaymentExpired = "payment.expired"
+
 	// --- User Events ---
 
 	// RoutingKeyUserOTPRequested: اعلام درخواست ارسال کد تایید ورود/ثبت‌نام.
@@ -89,6 +92,9 @@ const (
 
 	// QueueOrderPaymentInitiated: دریافت لینک و شناسه پرداخت جهت ذخیره در سفارش
 	QueueOrderPaymentInitiated = "order.payment_initiated.queue"
+
+	// QueueOrderPaymentExpired دریافت رویداد انقضای پرداخت جهت لغو سفارش و آزادسازی موجودی
+	QueueOrderPaymentExpired = "order.payment_expired.queue"
 
 	// --- Product Service Queues ---
 
