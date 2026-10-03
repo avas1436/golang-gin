@@ -5,7 +5,6 @@ package messaging
 import (
 	"context"
 	"encoding/json"
-	"log"
 
 	appErrors "pkg/errors"
 	"pkg/events"
@@ -78,13 +77,11 @@ func (c *OrderEventConsumer) StartListening(ctx context.Context) error {
 		func(ctx context.Context, body []byte) error {
 			var event events.OrderCreated
 			if err := json.Unmarshal(body, &event); err != nil {
-				log.Printf(
-					"payment-service: failed to unmarshal order created event: %v",
+				return appErrors.Wrap(
+					appErrors.KindInvalidInput,
 					err,
+					"payment-service: failed to unmarshal order created event",
 				)
-
-				// Poison message - برای جلوگیری از مسدود شدن صف Ack می‌شود
-				return nil
 			}
 			return c.handleOrderCreated(ctx, event)
 		},
@@ -98,13 +95,17 @@ func (c *OrderEventConsumer) handleOrderCreated(
 
 	// اعتبارسنجی اولیه شناسه رویداد
 	if event.EventID == uuid.Nil {
-		log.Printf("payment-service: order.created event has empty event_id")
-		return nil
+		return appErrors.New(
+			appErrors.KindInvalidInput,
+			"payment-service: order.created event has empty event_id",
+		)
 	}
 
 	if event.OrderID == uuid.Nil {
-		log.Printf("payment-service: order.created event has empty order_id")
-		return nil
+		return appErrors.New(
+			appErrors.KindInvalidInput,
+			"payment-service: order.created event has empty order_id",
+		)
 	}
 
 	return c.paymentService.HandleOrderCreated(

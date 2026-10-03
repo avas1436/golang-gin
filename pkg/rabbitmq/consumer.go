@@ -5,7 +5,7 @@ package rabbitmq
 import (
 	"context"
 	"encoding/json"
-	"errors"
+	stdErrors "errors"
 
 	appErrors "pkg/errors"
 
@@ -23,7 +23,7 @@ func isPermanentError(err error) bool {
 	var syntaxErr *json.SyntaxError
 	var unmarshalErr *json.UnmarshalTypeError
 
-	return errors.As(err, &syntaxErr) || errors.As(err, &unmarshalErr)
+	return stdErrors.As(err, &syntaxErr) || stdErrors.As(err, &unmarshalErr)
 }
 
 // getRetryCount تعداد دفعات رد شدن پیام را از هدر x-death
@@ -129,20 +129,132 @@ func (c *Consumer) BindQueue(
 		)
 	}
 
-	_, err := c.channel.QueueDeclare(
-		queueName,
+	// ۱. ساخت Exchange و صف DLQ
+	dlxExchange := queueName + ".dlx"
+	dlqName := queueName + ".dlq"
+
+	if err := c.channel.ExchangeDeclare(
+		dlxExchange,
+		"fanout",
+		true,  // durable
+		false, // auto-delete
+		false, // internal
+		false, // no-wait
+		nil,
+	); err != nil {
+		return appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to declare dlx exchange",
+		)
+	}
+
+	if _, err := c.channel.QueueDeclare(
+		dlqName,
 		true,  // durable
 		false, // auto-delete
 		false, // exclusive
 		false, // no-wait
 		nil,
-	)
-
-	if err != nil {
+	); err != nil {
 		return appErrors.Wrap(
 			appErrors.KindInternal,
 			err,
-			"failed to declare rabbitmq queue",
+			"failed to declare dlq queue",
+		)
+	}
+
+	if err := c.channel.QueueBind(
+		dlqName,
+		"",
+		dlxExchange,
+		false,
+		nil,
+	); err != nil {
+		return appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to bind rabbitmq queue",
+		)
+	}
+
+	// ۲. ساخت Exchange و صف Retry با x-message-ttl
+	retryExchange := queueName + ".retry.exchange"
+	retryQueue := queueName + ".retry"
+
+	if err := c.channel.ExchangeDeclare(
+		retryExchange,
+		"topic",
+		true,  // durable
+		false, // auto-delete
+		false, // internal
+		false, // no-wait
+		nil,
+	); err != nil {
+		return appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to declare retry exchange",
+		)
+	}
+
+	retryArgs := amqp.Table{
+		// تاخیر ۵ ثانیه‌ای قبل از تلاش مجدد
+		"x-message-ttl": int32(5000),
+
+		// ارجاع مجدد پیام منقضی شده به Exchange اصلی
+		"x-dead-letter-exchange": exchange,
+
+		// با همان RoutingKey اصلی
+		"x-dead-letter-routing-key": routingKey,
+	}
+
+	if _, err := c.channel.QueueDeclare(
+		retryQueue,
+		true,  // durable
+		false, // auto-delete
+		false, // exclusive
+		false, // no-wait
+		retryArgs,
+	); err != nil {
+		return appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to declare retry queue",
+		)
+	}
+
+	if err := c.channel.QueueBind(
+		retryQueue,
+		routingKey,
+		retryExchange,
+		false,
+		nil,
+	); err != nil {
+		return appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to bind retry queue",
+		)
+	}
+
+	// ۳. ساخت صف اصلی با x-dead-letter-exchange متصل به DLX
+	mainArgs := amqp.Table{
+		"x-dead-letter-exchange": dlxExchange,
+	}
+
+	if _, err := c.channel.QueueDeclare(
+		queueName,
+		true,  // durable
+		false, // auto-delete
+		false, // exclusive
+		false, // no-wait
+		mainArgs,
+	); err != nil {
+		return appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to declare main rabbitmq queue",
 		)
 	}
 
@@ -156,7 +268,7 @@ func (c *Consumer) BindQueue(
 		return appErrors.Wrap(
 			appErrors.KindInternal,
 			err,
-			"failed to bind rabbitmq queue",
+			"failed to bind main rabbitmq queue",
 		)
 	}
 
@@ -282,7 +394,7 @@ func (c *Consumer) Consume(
 				// دلیل: اگر پیام با خطای موقتی بیش از حد مجاز
 				// (مثلا ۳ بار) شکست بخورد، به DLQ منتقل می‌شود.
 				retryCount := getRetryCount(msg.Headers)
-				if msg.Redelivered || retryCount >= maxRetryCount {
+				if retryCount >= maxRetryCount {
 					if nackErr := msg.Nack(false, false); nackErr != nil {
 						return appErrors.Wrap(
 							appErrors.KindInternal,
@@ -292,11 +404,33 @@ func (c *Consumer) Consume(
 					}
 					continue
 				}
+				// ۳. هدایت پیام با خطای موقتی به صف Retry جهت اعمال
+				// تاخیر (TTL) و جلوگیری از Loop
+				retryExchange := queueName + ".retry.exchange"
+				pubErr := c.channel.PublishWithContext(
+					ctx,
+					retryExchange,
+					msg.RoutingKey,
+					false,
+					false,
+					amqp.Publishing{
+						ContentType: msg.ContentType,
+						Body:        msg.Body,
+						Headers:     msg.Headers,
+					},
+				)
+				if pubErr != nil {
+					_ = msg.Nack(false, true)
+					continue
+				}
 
-				// برای خطاهای موقتی و قبل از رسیدن به سقف تلاش مجدد
-				// -> Requeue
-				if nackErr := msg.Nack(false, true); nackErr != nil {
-					return appErrors.Wrap(appErrors.KindInternal, nackErr, "failed to nack rabbitmq message for requeue")
+				// تایید پیام اولیه پس از انتقال موفق به صف Retry
+				if ackErr := msg.Ack(false); ackErr != nil {
+					return appErrors.Wrap(
+						appErrors.KindInternal,
+						ackErr,
+						"failed to ack message after publishing to retry queue",
+					)
 				}
 			}
 		}

@@ -83,11 +83,11 @@ func (c *OrderEventConsumer) handleStockConfirm(
 ) error {
 	var event events.StockConfirmRequested
 	if err := json.Unmarshal(body, &event); err != nil {
-		log.Printf(
-			"product-service: failed to unmarshal stock confirm event: %v",
+		return appErrors.Wrap(
+			appErrors.KindInvalidInput,
 			err,
+			"product-service: failed to unmarshal stock confirm event",
 		)
-		return nil // Poison message - برای جلوگیری از مسدود شدن صف Ack می‌شود
 	}
 
 	err := postgres.WithTx(
@@ -163,11 +163,11 @@ func (c *OrderEventConsumer) handleStockRelease(
 ) error {
 	var event events.StockReleaseRequested
 	if err := json.Unmarshal(body, &event); err != nil {
-		log.Printf(
-			"product-service: failed to unmarshal stock release event: %v",
+		return appErrors.Wrap(
+			appErrors.KindInvalidInput,
 			err,
+			"product-service: failed to unmarshal stock release event",
 		)
-		return nil
 	}
 
 	err := postgres.WithTx(

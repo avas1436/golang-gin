@@ -5,7 +5,6 @@ package messaging
 import (
 	"context"
 	"encoding/json"
-	"log"
 
 	"github.com/google/uuid"
 
@@ -216,20 +215,20 @@ func (c *PaymentEventConsumer) handlePaymentCompleted(
 	body []byte,
 ) error {
 	var event events.PaymentCompleted
+
 	if err := json.Unmarshal(body, &event); err != nil {
-		log.Printf(
-			"order-service: failed to unmarshal PaymentCompleted event: %v",
+		return appErrors.Wrap(
+			appErrors.KindInvalidInput,
 			err,
+			"order-service: failed to unmarshal PaymentCompleted event",
 		)
-		// Poison message: برای جلوگیری از مسدود شدن صف (Infinite Requeue) خطا نادیده گرفته شده و ACK می‌شود
-		return nil
 	}
 
 	if event.OrderID == uuid.Nil {
-		log.Printf(
+		return appErrors.New(
+			appErrors.KindInvalidInput,
 			"order-service: received PaymentCompleted event with empty order_id",
 		)
-		return nil
 	}
 
 	return c.orderService.HandlePaymentSucceeded(ctx, event)
@@ -241,19 +240,18 @@ func (c *PaymentEventConsumer) handlePaymentFailed(
 ) error {
 	var event events.PaymentFailed
 	if err := json.Unmarshal(body, &event); err != nil {
-		log.Printf(
-			"order-service: failed to unmarshal PaymentFailed event: %v",
+		return appErrors.Wrap(
+			appErrors.KindInvalidInput,
 			err,
+			"order-service: failed to unmarshal PaymentFailed event",
 		)
-		// Poison message: برای جلوگیری از مسدود شدن صف (Infinite Requeue) خطا نادیده گرفته شده و ACK می‌شود
-		return nil
 	}
 
 	if event.OrderID == uuid.Nil {
-		log.Printf(
+		return appErrors.New(
+			appErrors.KindInvalidInput,
 			"order-service: received PaymentFailed event with empty order_id",
 		)
-		return nil
 	}
 
 	return c.orderService.HandlePaymentFailed(ctx, event)
@@ -265,18 +263,18 @@ func (c *PaymentEventConsumer) handlePaymentInitiated(
 ) error {
 	var event events.PaymentInitiated
 	if err := json.Unmarshal(body, &event); err != nil {
-		log.Printf(
-			"order-service: failed to unmarshal PaymentInitiated event: %v",
+		return appErrors.Wrap(
+			appErrors.KindInvalidInput,
 			err,
+			"order-service: failed to unmarshal PaymentInitiated event",
 		)
-		return nil
 	}
 
 	if event.OrderID == uuid.Nil {
-		log.Printf(
+		return appErrors.New(
+			appErrors.KindInvalidInput,
 			"order-service: received PaymentInitiated event with empty order_id",
 		)
-		return nil
 	}
 
 	return c.orderService.HandlePaymentInitiated(ctx, event)
