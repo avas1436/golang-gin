@@ -468,8 +468,8 @@ func (
 			updated_at
 		FROM payments
 		WHERE status = 'awaiting'
-		  AND updated_at < $1
-		ORDER BY updated_at ASC
+		  AND created_at < $1
+		ORDER BY created_at ASC
 		LIMIT $2
 	`
 
