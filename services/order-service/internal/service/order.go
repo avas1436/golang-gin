@@ -20,6 +20,7 @@ const roleAdmin = "admin"
 
 type OrderService struct {
 	orderRepo     repository.OrderRepository
+	sagaRepo      repository.SagaRepository
 	productClient client.ProductClient
 	publisher     EventPublisher
 }
@@ -87,7 +88,8 @@ func (
 	order.TotalAmount = order.CalculateTotal()
 
 	// اگر ذخیره کردن در جدول سفارش انجام نشد باید بقیه تغییرات هم به رول بک بشن
-	if err := s.orderRepo.Create(ctx, order); err != nil {
+	// ایجاد اتمیک سفارش و آیتم‌ها در یک تراکنش دیتابیس از طریق SagaRepository
+	if err := s.sagaRepo.CreateOrderAtomic(ctx, order); err != nil {
 
 		s.compensateReservations(ctx, reservedItems, "order_persist_failed")
 

@@ -10,6 +10,7 @@ import (
 	"pkg/events"
 
 	"order-service/internal/model"
+	"order-service/internal/repository"
 )
 
 func (
@@ -19,51 +20,63 @@ func (
 	event events.PaymentCompleted,
 ) error {
 
-	// ۱. تغییر وضعیت سفارش به Confirmed در دیتابیس
-	if err := c.orderRepo.UpdateStatus(
+	// استفاده از SagaRepository برای مدیریت اتمیک ثبت رویداد در
+	// Inbox و اعمال تغییرات روی سفارش
+	alreadyProcessed, order, err := c.sagaRepo.ExecuteInInbox(
 		ctx,
-		event.OrderID,
-		model.OrderStatusConfirmed,
-	); err != nil {
+		event.EventID,
+		events.RoutingKeyPaymentCompleted,
+		&event.OrderID,
+		func(
+			ctx context.Context,
+			txRepo repository.OrderRepository,
+		) (
+			*model.Order,
+			error,
+		) {
 
-		// اگر وضعیت از قبل تغییر کرده است (Redelivery / Retry بعد از Crash)،
-		// خطا را نادیده گرفته و برای حفظ یکپارچگی Saga به مرحله بعد می‌رویم.
-		if appErrors.GetKind(err) == appErrors.KindAlreadyExists {
-			log.Printf(
-				"order-service: order %s is already processed (status not pending), continuing to stock confirmation for idempotency recovery",
+			existingOrder, err := txRepo.GetByID(ctx, event.OrderID)
+			if err != nil {
+				return nil, err
+			}
+
+			// بررسی تضاد وضعیت سفارش - قبلاً کنسل شده اما رویداد
+			// پرداخت موفق دیرتر رسیده است
+			if existingOrder.Status == model.OrderStatusCancelled || existingOrder.Status == model.OrderStatusFailed {
+
+				log.Printf(
+					"CRITICAL WARNING: order-service: order %s is already in state '%s', but received payment.completed (EventID: %s)! Needs refund action.",
+					event.OrderID,
+					existingOrder.Status,
+					event.EventID,
+				)
+
+				return nil, nil
+			}
+
+			if err := txRepo.UpdateStatus(
+				ctx,
 				event.OrderID,
-			)
-		} else {
-			log.Printf(
-				"order-service: failed to update order status to confirmed for order %s: %v",
-				event.OrderID,
-				err,
-			)
+				model.OrderStatusConfirmed,
+			); err != nil {
 
-			return appErrors.Wrap(
-				appErrors.KindInternal,
-				err,
-				"failed to update order status to confirmed",
-			)
-		}
-	}
+				return nil, err
+			}
 
-	// ۲. دریافت آیتم‌های سفارش جهت قطعی کردن کسر موجودی در Product Service
-	order, err := c.orderRepo.GetByID(ctx, event.OrderID)
+			return existingOrder, nil
+		},
+	)
+
 	if err != nil {
-		log.Printf(
-			"order-service: failed to fetch order %s: %v",
-			event.OrderID,
-			err,
-		)
-
-		return appErrors.Wrap(
-			appErrors.KindInternal,
-			err,
-			"failed to fetch order details for stock confirmation",
-		)
+		return err
 	}
 
+	// اگر پیام تکراری بوده یا وضعیت سفارش تغییر نکرده باشد، رویداد قطعی شدن موجودی صادر نمی‌شود
+	if alreadyProcessed || order == nil {
+		return nil
+	}
+
+	// قطعی کردن موجودی در Product Service خارج از تراکنش دیتابیس
 	for _, item := range order.Items {
 		if err := c.publisher.PublishStockConfirmRequested(
 			ctx,
@@ -71,15 +84,11 @@ func (
 			item.ProductID,
 			item.Quantity,
 		); err != nil {
-
 			log.Printf(
 				"order-service: failed to publish stock confirm for product %s: %v",
 				item.ProductID,
 				err,
 			)
-
-			// در صورت بروز خطا در انتشار رویداد، خطا برمی‌گردانیم
-			// تا پیام NACK/Requeue شود
 			return appErrors.Wrap(
 				appErrors.KindInternal,
 				err,
@@ -98,51 +107,46 @@ func (
 	event events.PaymentFailed,
 ) error {
 
-	// ۱. تغییر وضعیت سفارش به Cancelled در دیتابیس
-	if err := c.orderRepo.UpdateStatus(
+	alreadyProcessed, order, err := c.sagaRepo.ExecuteInInbox(
 		ctx,
-		event.OrderID,
-		model.OrderStatusCancelled,
-	); err != nil {
+		event.EventID,
+		events.RoutingKeyPaymentFailed,
+		&event.OrderID,
+		func(
+			ctx context.Context,
+			txRepo repository.OrderRepository,
+		) (
+			*model.Order,
+			error,
+		) {
 
-		// اگر وضعیت از قبل تغییر کرده است (Redelivery / Retry بعد از Crash)،
-		// خطا را نادیده گرفته و برای حفظ یکپارچگی Saga به مرحله بعد می‌رویم.
-		if appErrors.GetKind(err) == appErrors.KindAlreadyExists {
-			log.Printf(
-				"order-service: order %s is already processed (status not pending), continuing to stock release for idempotency recovery",
+			existingOrder, err := txRepo.GetByID(ctx, event.OrderID)
+			if err != nil {
+				return nil, err
+			}
+
+			if err := txRepo.UpdateStatus(
+				ctx,
 				event.OrderID,
-			)
-		} else {
-			log.Printf(
-				"order-service: failed to update order status to cancelled for order %s: %v",
-				event.OrderID,
-				err,
-			)
+				model.OrderStatusCancelled,
+			); err != nil {
 
-			return appErrors.Wrap(
-				appErrors.KindInternal,
-				err,
-				"failed to update order status to cancelled",
-			)
-		}
-	}
+				return nil, err
+			}
 
-	// ۲. دریافت آیتم‌های سفارش جهت آزادسازی موجودی رزرو شده در Product Service
-	order, err := c.orderRepo.GetByID(ctx, event.OrderID)
+			return existingOrder, nil
+		},
+	)
+
 	if err != nil {
-		log.Printf(
-			"order-service: failed to fetch order %s: %v",
-			event.OrderID,
-			err,
-		)
-
-		return appErrors.Wrap(
-			appErrors.KindInternal,
-			err,
-			"failed to fetch order details for stock release",
-		)
+		return err
 	}
 
+	if alreadyProcessed || order == nil {
+		return nil
+	}
+
+	// آزادسازی موجودی در Product Service
 	for _, item := range order.Items {
 		if err := c.publisher.PublishStockReleaseRequested(
 			ctx,
@@ -150,21 +154,16 @@ func (
 			item.Quantity,
 			"payment_failed",
 		); err != nil {
-
 			log.Printf(
 				"order-service: failed to publish stock release for product %s: %v",
 				item.ProductID,
 				err,
 			)
-
-			// در صورت بروز خطا در انتشار رویداد، خطا برمی‌گردانیم
-			//  تا پیام NACK/Requeue شود
 			return appErrors.Wrap(
 				appErrors.KindInternal,
 				err,
 				"failed to publish stock release requested event",
 			)
-
 		}
 	}
 
@@ -180,29 +179,51 @@ func (
 	event events.PaymentInitiated,
 ) error {
 
-	log.Printf(
-		"order-service: payment initiated for order %s, redirect_url: %s",
-		event.OrderID,
-		event.RedirectURL,
+	alreadyProcessed, _, err := c.sagaRepo.ExecuteInInbox(
+		ctx,
+		event.EventID,
+		events.RoutingKeyPaymentInitiated,
+		&event.OrderID,
+		func(
+			ctx context.Context,
+			txRepo repository.OrderRepository,
+		) (
+			*model.Order,
+			error,
+		) {
+
+			log.Printf(
+				"order-service: payment initiated for order %s, redirect_url: %s",
+				event.OrderID,
+				event.RedirectURL,
+			)
+
+			if err := txRepo.UpdatePaymentDetails(
+				ctx,
+				event.OrderID,
+				event.RedirectURL,
+				event.Authority,
+			); err != nil {
+
+				return nil, appErrors.Wrap(
+					appErrors.KindInternal,
+					err,
+					"failed to update order payment details",
+				)
+			}
+
+			return nil, nil
+		},
 	)
 
-	// ۱. به روزرسانی لینک پرداخت و Authority در جدول orders
-	if err := c.orderRepo.UpdatePaymentDetails(
-		ctx,
-		event.OrderID,
-		event.RedirectURL,
-		event.Authority,
-	); err != nil {
-		log.Printf(
-			"order-service: failed to update payment details for order %s: %v",
-			event.OrderID,
-			err,
-		)
+	if err != nil {
+		return err
+	}
 
-		return appErrors.Wrap(
-			appErrors.KindInternal,
-			err,
-			"failed to update order payment details",
+	if alreadyProcessed {
+		log.Printf(
+			"order-service: payment initiated event %s already processed, skipping",
+			event.EventID,
 		)
 	}
 

@@ -6,9 +6,9 @@ import (
 	"context"
 
 	appErrors "pkg/errors"
+	"pkg/postgres"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // EventRepository جدول processed_events را مدیریت می‌کند: تنها
@@ -33,7 +33,7 @@ type EventRepository interface {
 }
 
 type eventRepository struct {
-	pool *pgxpool.Pool
+	pool postgres.DBTX
 }
 
 // MarkProcessed با یک INSERT ... ON CONFLICT DO NOTHING پیاده‌سازی

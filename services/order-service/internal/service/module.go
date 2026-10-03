@@ -16,12 +16,14 @@ import (
 // این کار توسط Fx و Moduleهای مربوط به هر package انجام می‌شود.
 func NewOrderService(
 	orderRepo repository.OrderRepository,
+	sagaRepo repository.SagaRepository,
 	productClient client.ProductClient,
 	publisher EventPublisher,
 ) *OrderService {
 
 	return &OrderService{
 		orderRepo:     orderRepo,
+		sagaRepo:      sagaRepo,
 		productClient: productClient,
 		publisher:     publisher,
 	}
