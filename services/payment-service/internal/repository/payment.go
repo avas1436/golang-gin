@@ -346,7 +346,7 @@ func (
 			failure_reason = $6,
 			metadata       = $7,
 			updated_at     = $8
-		WHERE id = $9 AND status = 'pending';
+		WHERE id = $9 AND status = $10;
 	`
 
 	result, err := r.db.Exec(
@@ -361,6 +361,7 @@ func (
 		payment.Metadata,
 		payment.UpdatedAt,
 		payment.ID,
+		model.PaymentStatusPending,
 	)
 	if err != nil {
 		return appErrors.Wrap(
@@ -468,7 +469,7 @@ func (
             failure_reason = $6,
             metadata       = $7,
             updated_at     = $8
-        WHERE id = $9 AND status = 'awaiting';
+        WHERE id = $9 AND status = $10;
     `
 
 	result, err := r.db.Exec(
@@ -483,6 +484,7 @@ func (
 		payment.Metadata,
 		payment.UpdatedAt,
 		payment.ID,
+		model.PaymentStatusAwaitingPayment,
 	)
 	if err != nil {
 		return appErrors.Wrap(
@@ -533,15 +535,22 @@ func (
 			created_at,
 			updated_at
 		FROM payments
-		WHERE status = 'awaiting'
-		  AND updated_at < $1
-		ORDER BY created_at ASC
-		LIMIT $2
+		WHERE status = $1
+		  AND updated_at < $2
+		ORDER BY updated_at ASC
+		LIMIT $3
 	`
 
 	cutoffTime := time.Now().Add(-timeout)
 
-	rows, err := r.db.Query(ctx, query, cutoffTime, limit)
+	rows, err := r.db.Query(
+		ctx,
+		query,
+		model.PaymentStatusAwaitingPayment,
+		cutoffTime,
+		limit,
+	)
+
 	if err != nil {
 		return nil, appErrors.Wrap(
 			appErrors.KindInternal,
