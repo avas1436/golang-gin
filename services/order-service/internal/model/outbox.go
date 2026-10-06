@@ -94,25 +94,3 @@ func NewOutboxEvent(
 		Status:        OutboxStatusPending,
 	}
 }
-
-// MarkPublished وضعیت رویداد را به منتشرشده تغییر می‌دهد
-func (e *OutboxEvent) MarkPublished() {
-	now := time.Now()
-	e.Status = OutboxStatusPublished
-	e.PublishedAt = &now
-	e.UpdatedAt = now
-}
-
-// MarkFailed وضعیت رویداد را در صورت ثبت خطای قطعی به شکست‌خورده تغییر می‌دهد
-func (e *OutboxEvent) MarkFailed(reason string) {
-	e.Status = OutboxStatusFailed
-	e.LastError = &reason
-	e.UpdatedAt = time.Now()
-}
-
-// IncrementRetry تعداد تلاش‌های ناموفق را یک واحد افزایش می‌دهد
-func (e *OutboxEvent) IncrementRetry(lastErr string) {
-	e.RetryCount++
-	e.LastError = &lastErr
-	e.UpdatedAt = time.Now()
-}
