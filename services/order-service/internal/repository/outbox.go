@@ -69,10 +69,6 @@ type outboxRepository struct {
 	db postgres.DBTX
 }
 
-func NewOutboxRepository(db postgres.DBTX) OutboxRepository {
-	return &outboxRepository{db: db}
-}
-
 // Create یک رویداد را در جدول outbox_events درج می‌کند
 func (
 	r *outboxRepository,
