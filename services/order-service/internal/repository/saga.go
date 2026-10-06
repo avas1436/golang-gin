@@ -112,7 +112,7 @@ func (
 		Order:  orderRepo,
 		Event:  eventRepo,
 		Outbox: outboxRepo,
-		Saga:   nil,
+		Saga:   r,
 	}
 
 	order, err := fn(ctx, repos)
@@ -149,6 +149,14 @@ func (
 
 	if outboxEvent == nil {
 		return nil
+	}
+
+	// اگر AggregateID تنظیم نشده بود، شناسه سفارش ایجادشده را ست کن
+	if outboxEvent.AggregateID == nil ||
+		*outboxEvent.AggregateID == uuid.Nil {
+
+		outboxEvent.AggregateID = &order.ID
+
 	}
 
 	outboxRepo := NewOutboxRepository(r.db)

@@ -9,13 +9,13 @@ import (
 )
 
 // ساخت یک رپوزیتوری سفارشات
-func NewOrderRepository(pool postgres.DBTX) OrderRepository {
-	return &orderRepository{pool: pool}
+func NewOrderRepository(db postgres.DBTX) OrderRepository {
+	return &orderRepository{db: db}
 }
 
 // ساخت یک رپوزیتوری ایونت
-func NewEventRepository(pool postgres.DBTX) EventRepository {
-	return &eventRepository{pool: pool}
+func NewEventRepository(db postgres.DBTX) EventRepository {
+	return &eventRepository{db: db}
 }
 
 func NewSagaRepository(db postgres.DBTX) SagaRepository {

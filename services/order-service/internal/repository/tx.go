@@ -5,6 +5,7 @@ package repository
 import (
 	"context"
 
+	appErrors "pkg/errors"
 	"pkg/postgres"
 
 	"github.com/jackc/pgx/v5"
@@ -55,6 +56,13 @@ func (
 	ctx context.Context,
 	fn func(repos Repositories) error,
 ) error {
+
+	if fn == nil {
+		return appErrors.New(
+			appErrors.KindInvalidInput,
+			"transaction callback cannot be nil",
+		)
+	}
 
 	return postgres.WithTx(
 		ctx,

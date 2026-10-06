@@ -50,7 +50,8 @@ type OrderRepository interface {
 	UpdateStatus(
 		ctx context.Context,
 		id uuid.UUID,
-		next model.OrderStatus,
+		from model.OrderStatus,
+		to model.OrderStatus,
 	) error
 
 	// UpdatePaymentDetails برای افزودن مشخصات پرداخت به جدول سفارشات
@@ -64,7 +65,7 @@ type OrderRepository interface {
 
 // همه چیز در اینجا در یک تراکنش انجام میشود
 type orderRepository struct {
-	pool postgres.DBTX
+	db postgres.DBTX
 }
 
 // ساخت یک سفارش در یک تراکنش
@@ -95,7 +96,7 @@ func (
 		RETURNING id, status, created_at, updated_at
 	`
 
-	if err := r.pool.QueryRow(
+	if err := r.db.QueryRow(
 		ctx,
 		insertOrder,
 		order.UserID,
@@ -150,7 +151,7 @@ func (
 			RETURNING id, product_id, subtotal, created_at
 		`
 
-		rows, err := r.pool.Query(
+		rows, err := r.db.Query(
 			ctx,
 			insertItemsQuery,
 			orderIDs,
@@ -275,7 +276,7 @@ func (
 	`
 
 	// دریافت اطلاعات اولیه سفارش
-	err := r.pool.QueryRow(
+	err := r.db.QueryRow(
 		ctx,
 		orderQuery,
 		id,
@@ -342,7 +343,7 @@ func (
 		ORDER BY created_at
 	`
 
-	rows, err := r.pool.Query(ctx, query, orderID)
+	rows, err := r.db.Query(ctx, query, orderID)
 	if err != nil {
 		return nil, appErrors.Wrap(
 			appErrors.KindInternal,
@@ -424,7 +425,7 @@ func (
 		LIMIT $2 OFFSET $3
 	`
 
-	rows, err := r.pool.Query(ctx, query, userID, limit, offset)
+	rows, err := r.db.Query(ctx, query, userID, limit, offset)
 	if err != nil {
 		return nil, appErrors.Wrap(
 			appErrors.KindInternal,
@@ -476,7 +477,8 @@ func (
 ) UpdateStatus(
 	ctx context.Context,
 	id uuid.UUID,
-	next model.OrderStatus,
+	from model.OrderStatus,
+	to model.OrderStatus,
 ) error {
 
 	query := `
@@ -485,12 +487,12 @@ func (
 		WHERE id = $2 AND status = $3
 	`
 
-	result, err := r.pool.Exec(
+	result, err := r.db.Exec(
 		ctx,
 		query,
-		next,
+		to,
 		id,
-		model.OrderStatusPending,
+		from,
 	)
 	if err != nil {
 		return appErrors.Wrap(
@@ -526,7 +528,7 @@ func (r *orderRepository) UpdatePaymentDetails(
 		SET payment_url = $1, payment_authority = $2, updated_at = NOW()
 		WHERE id = $3
 	`
-	result, err := r.pool.Exec(
+	result, err := r.db.Exec(
 		ctx,
 		query,
 		redirectURL,

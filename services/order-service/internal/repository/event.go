@@ -33,7 +33,7 @@ type EventRepository interface {
 }
 
 type eventRepository struct {
-	pool postgres.DBTX
+	db postgres.DBTX
 }
 
 // MarkProcessed با یک INSERT ... ON CONFLICT DO NOTHING پیاده‌سازی
@@ -67,7 +67,7 @@ func (
 		ON CONFLICT (event_id) DO NOTHING
 	`
 
-	result, err := r.pool.Exec(
+	result, err := r.db.Exec(
 		ctx,
 		query,
 		eventID,
