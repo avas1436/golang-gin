@@ -4,9 +4,9 @@ package service
 
 import (
 	"context"
-	"log"
 
 	appErrors "pkg/errors"
+	"pkg/events"
 	pb "pkg/proto/order"
 
 	"order-service/internal/client"
@@ -87,48 +87,28 @@ func (
 	}
 	order.TotalAmount = order.CalculateTotal()
 
-	// اگر ذخیره کردن در جدول سفارش انجام نشد باید بقیه تغییرات هم به رول بک بشن
-	// ایجاد اتمیک سفارش و آیتم‌ها در یک تراکنش دیتابیس از طریق SagaRepository
-	if err := s.sagaRepo.CreateOrderAtomic(ctx, order); err != nil {
+	payload, err := s.publisher.BuildOrderCreatedPayload(order)
+	if err != nil {
+		s.compensateReservations(ctx, reservedItems, "payload_build_failed")
+		return nil, err
+	}
+
+	outboxEvent := model.NewOutboxEvent(
+		model.OutboxEventTypeOrderCreated,
+		events.RoutingKeyOrderCreated,
+		payload,
+		uuid.Nil, // CreateOrderAtomic خودش order.ID رو ست می‌کنه
+	)
+
+	if err := s.sagaRepo.CreateOrderAtomic(
+		ctx,
+		order,
+		outboxEvent,
+	); err != nil {
 
 		s.compensateReservations(ctx, reservedItems, "order_persist_failed")
 
 		return nil, err
-	}
-
-	// انتشار ثبت سفارش برای استفاده در سرویس پرداخت
-	if err := s.publisher.PublishOrderCreated(ctx, order); err != nil {
-
-		// 1. لاگ کردن خطا
-		log.Printf(
-			"order-service: failed to publish order.created for order %s: %v",
-			order.ID,
-			err,
-		)
-
-		// 2. آزاد کردن رزروها در سرویس محصول
-		s.compensateReservations(ctx, reservedItems, "publish_failed")
-
-		// 3. در دیتابیس هم سفارش کنسل میشود
-		if updateErr := s.orderRepo.UpdateStatus(
-			ctx,
-			order.ID,
-			model.OrderStatusFailed,
-		); updateErr != nil {
-
-			log.Printf(
-				"order-service: failed to mark order %s as failed: %v",
-				order.ID,
-				updateErr,
-			)
-
-		}
-
-		return nil, appErrors.New(
-			appErrors.KindInternal,
-			"failed to start order processing",
-		)
-
 	}
 
 	return toProtoOrder(order), nil

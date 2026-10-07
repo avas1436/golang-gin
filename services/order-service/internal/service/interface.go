@@ -37,4 +37,19 @@ type EventPublisher interface {
 		productID uuid.UUID,
 		quantity int32,
 	) error
+
+	// این متدها فقط payload می‌سازن، publish نمی‌کنن
+	BuildOrderCreatedPayload(order *model.Order) ([]byte, error)
+
+	BuildStockConfirmPayload(
+		orderID uuid.UUID,
+		productID uuid.UUID,
+		quantity int32,
+	) ([]byte, error)
+
+	BuildStockReleasePayload(
+		productID uuid.UUID,
+		quantity int32,
+		reason string,
+	) ([]byte, error)
 }

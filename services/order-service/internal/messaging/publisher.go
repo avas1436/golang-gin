@@ -4,6 +4,7 @@ package messaging
 
 import (
 	"context"
+	"encoding/json"
 	appErrors "pkg/errors"
 	"time"
 
@@ -118,6 +119,90 @@ func (p *RabbitMQEventPublisher) PublishStockConfirmRequested(
 	return p.publisher.Publish(
 		ctx, events.RoutingKeyStockConfirmRequested, event,
 	)
+}
+
+func (
+	p *RabbitMQEventPublisher,
+) BuildOrderCreatedPayload(
+	order *model.Order,
+) (
+	[]byte,
+	error,
+) {
+
+	if order == nil {
+		return nil, appErrors.New(
+			appErrors.KindInvalidInput,
+			"order cannot be nil",
+		)
+	}
+
+	items := make([]events.OrderCreatedItem, 0, len(order.Items))
+	for _, item := range order.Items {
+		items = append(
+			items,
+			events.OrderCreatedItem{
+				ProductID: item.ProductID,
+				Quantity:  item.Quantity,
+				UnitPrice: item.UnitPrice,
+			},
+		)
+	}
+
+	event := events.OrderCreated{
+		EventID:     uuid.New(),
+		OrderID:     order.ID,
+		UserID:      order.UserID,
+		TotalAmount: order.TotalAmount,
+		Items:       items,
+		CreatedAt:   order.CreatedAt.UTC(),
+	}
+
+	return json.Marshal(event)
+}
+
+func (
+	p *RabbitMQEventPublisher,
+) BuildStockConfirmPayload(
+	orderID uuid.UUID,
+	productID uuid.UUID,
+	quantity int32,
+) (
+	[]byte,
+	error,
+) {
+
+	event := events.StockConfirmRequested{
+		EventID:     uuid.New(),
+		OrderID:     orderID,
+		ProductID:   productID,
+		Quantity:    quantity,
+		RequestedAt: time.Now().UTC(),
+	}
+
+	return json.Marshal(event)
+}
+
+func (
+	p *RabbitMQEventPublisher,
+) BuildStockReleasePayload(
+	productID uuid.UUID,
+	quantity int32,
+	reason string,
+) (
+	[]byte,
+	error,
+) {
+
+	event := events.StockReleaseRequested{
+		EventID:     uuid.New(),
+		ProductID:   productID,
+		Quantity:    quantity,
+		Reason:      reason,
+		RequestedAt: time.Now().UTC(),
+	}
+
+	return json.Marshal(event)
 }
 
 // Close بستن کانال مربوط به Publisher

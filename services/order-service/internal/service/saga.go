@@ -20,8 +20,6 @@ func (
 	event events.PaymentCompleted,
 ) error {
 
-	// استفاده از SagaRepository برای مدیریت اتمیک ثبت رویداد در
-	// Inbox و اعمال تغییرات روی سفارش
 	alreadyProcessed, order, err := c.sagaRepo.ExecuteInInbox(
 		ctx,
 		event.EventID,
@@ -29,38 +27,54 @@ func (
 		&event.OrderID,
 		func(
 			ctx context.Context,
-			txRepo repository.OrderRepository,
-		) (
-			*model.Order,
-			error,
-		) {
+			repos repository.Repositories,
+		) (*model.Order, error) {
 
-			existingOrder, err := txRepo.GetByID(ctx, event.OrderID)
+			existingOrder, err := repos.Order.GetByID(ctx, event.OrderID)
 			if err != nil {
 				return nil, err
 			}
 
-			// بررسی تضاد وضعیت سفارش - قبلاً کنسل شده اما رویداد
-			// پرداخت موفق دیرتر رسیده است
-			if existingOrder.Status == model.OrderStatusCancelled || existingOrder.Status == model.OrderStatusFailed {
-
+			if existingOrder.Status == model.OrderStatusCancelled ||
+				existingOrder.Status == model.OrderStatusFailed {
 				log.Printf(
-					"CRITICAL WARNING: order-service: order %s is already in state '%s', but received payment.completed (EventID: %s)! Needs refund action.",
+					"CRITICAL WARNING: order %s is '%s' but got payment.completed (EventID: %s). Needs refund.",
 					event.OrderID,
 					existingOrder.Status,
 					event.EventID,
 				)
-
 				return nil, nil
 			}
 
-			if err := txRepo.UpdateStatus(
+			// UpdateStatus با from+to (optimistic locking)
+			if err := repos.Order.UpdateStatus(
 				ctx,
 				event.OrderID,
+				model.OrderStatusPending,
 				model.OrderStatusConfirmed,
 			); err != nil {
-
 				return nil, err
+			}
+
+			// رویداد stock.confirm.requested رو داخل تراکنش به Outbox اضافه کن
+			for _, item := range existingOrder.Items {
+				payload, err := c.publisher.BuildStockConfirmPayload(
+					existingOrder.ID,
+					item.ProductID,
+					item.Quantity,
+				)
+				if err != nil {
+					return nil, err
+				}
+				outboxEvent := model.NewOutboxEvent(
+					model.OutboxEventTypeStockConfirmRequested,
+					events.RoutingKeyStockConfirmRequested,
+					payload,
+					existingOrder.ID,
+				)
+				if err := repos.Outbox.Create(ctx, outboxEvent); err != nil {
+					return nil, err
+				}
 			}
 
 			return existingOrder, nil
@@ -71,33 +85,11 @@ func (
 		return err
 	}
 
-	// اگر پیام تکراری بوده یا وضعیت سفارش تغییر نکرده باشد، رویداد قطعی شدن موجودی صادر نمی‌شود
 	if alreadyProcessed || order == nil {
 		return nil
 	}
 
-	// قطعی کردن موجودی در Product Service خارج از تراکنش دیتابیس
-	for _, item := range order.Items {
-		if err := c.publisher.PublishStockConfirmRequested(
-			ctx,
-			order.ID,
-			item.ProductID,
-			item.Quantity,
-		); err != nil {
-			log.Printf(
-				"order-service: failed to publish stock confirm for product %s: %v",
-				item.ProductID,
-				err,
-			)
-			return appErrors.Wrap(
-				appErrors.KindInternal,
-				err,
-				"failed to publish stock confirm requested event",
-			)
-		}
-	}
-
-	return nil
+	return nil // Relay Worker منتشر می‌کند
 }
 
 func (
@@ -114,24 +106,55 @@ func (
 		&event.OrderID,
 		func(
 			ctx context.Context,
-			txRepo repository.OrderRepository,
+			repos repository.Repositories,
 		) (
 			*model.Order,
 			error,
 		) {
 
-			existingOrder, err := txRepo.GetByID(ctx, event.OrderID)
+			existingOrder, err := repos.Order.GetByID(ctx, event.OrderID)
 			if err != nil {
 				return nil, err
 			}
 
-			if err := txRepo.UpdateStatus(
+			if existingOrder.Status != model.OrderStatusPending {
+				log.Printf(
+					"order %s already in state '%s', skipping cancel",
+					event.OrderID,
+					existingOrder.Status,
+				)
+				return nil, nil
+			}
+
+			if err := repos.Order.UpdateStatus(
 				ctx,
 				event.OrderID,
+				model.OrderStatusPending,
 				model.OrderStatusCancelled,
 			); err != nil {
 
 				return nil, err
+			}
+
+			// رویداد stock.confirm.requested رو داخل تراکنش به Outbox اضافه کن
+			for _, item := range existingOrder.Items {
+				payload, err := c.publisher.BuildStockReleasePayload(
+					item.ProductID,
+					item.Quantity,
+					"payment_failed",
+				)
+				if err != nil {
+					return nil, err
+				}
+				outboxEvent := model.NewOutboxEvent(
+					model.OutboxEventTypeStockReleaseRequested,
+					events.RoutingKeyStockReleaseRequested,
+					payload,
+					existingOrder.ID,
+				)
+				if err := repos.Outbox.Create(ctx, outboxEvent); err != nil {
+					return nil, err
+				}
 			}
 
 			return existingOrder, nil
@@ -146,28 +169,7 @@ func (
 		return nil
 	}
 
-	// آزادسازی موجودی در Product Service
-	for _, item := range order.Items {
-		if err := c.publisher.PublishStockReleaseRequested(
-			ctx,
-			item.ProductID,
-			item.Quantity,
-			"payment_failed",
-		); err != nil {
-			log.Printf(
-				"order-service: failed to publish stock release for product %s: %v",
-				item.ProductID,
-				err,
-			)
-			return appErrors.Wrap(
-				appErrors.KindInternal,
-				err,
-				"failed to publish stock release requested event",
-			)
-		}
-	}
-
-	return nil
+	return nil // Relay Worker منتشر می‌کند
 }
 
 // HandlePaymentInitiated رویداد payment.initiated
@@ -186,19 +188,13 @@ func (
 		&event.OrderID,
 		func(
 			ctx context.Context,
-			txRepo repository.OrderRepository,
+			repos repository.Repositories,
 		) (
 			*model.Order,
 			error,
 		) {
 
-			log.Printf(
-				"order-service: payment initiated for order %s, redirect_url: %s",
-				event.OrderID,
-				event.RedirectURL,
-			)
-
-			if err := txRepo.UpdatePaymentDetails(
+			if err := repos.Order.UpdatePaymentDetails(
 				ctx,
 				event.OrderID,
 				event.RedirectURL,
