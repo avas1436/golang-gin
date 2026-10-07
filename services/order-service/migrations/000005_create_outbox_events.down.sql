@@ -20,6 +20,7 @@ DROP FUNCTION IF EXISTS outbox_events_set_updated_at();
 DROP INDEX IF EXISTS idx_outbox_events_published_at;
 DROP INDEX IF EXISTS idx_outbox_events_aggregate;
 DROP INDEX IF EXISTS idx_outbox_events_pending;
+DROP INDEX IF EXISTS idx_outbox_events_pending_claim;
 
 -- ==========================================
 -- 4. Drop Table

@@ -62,6 +62,10 @@ CREATE INDEX IF NOT EXISTS idx_outbox_events_published_at
 ON outbox_events (published_at)
 WHERE published_at IS NOT NULL;
 
+CREATE INDEX IF NOT EXISTS idx_outbox_events_pending_claim
+ON outbox_events (created_at, id)
+WHERE status = 'pending';
+
 -- ==========================================
 -- 3. Auto-update updated_at Trigger
 -- ==========================================
@@ -85,19 +89,17 @@ EXECUTE FUNCTION outbox_events_set_updated_at();
 -- همان الگوی purge_old_processed_events در payment-service.
 -- این procedure را می‌توان با pg_cron یا یک CronJob جداگانه
 -- به‌صورت دوره‌ای اجرا کرد
-CREATE OR REPLACE PROCEDURE purge_old_outbox_events(
-    retention_days INT DEFAULT 7
-)
+CREATE OR REPLACE PROCEDURE purge_old_outbox_events(retention_days INT DEFAULT 7)
 LANGUAGE plpgsql
 AS $$
 DECLARE
     deleted_count INT;
 BEGIN
     DELETE FROM outbox_events
-    WHERE status = 'published'
-      AND published_at < NOW() - make_interval(days => retention_days);
+    WHERE status IN ('published', 'failed')
+      AND published_at < NOW() - (retention_days || ' days')::INTERVAL;
 
     GET DIAGNOSTICS deleted_count = ROW_COUNT;
-    RAISE NOTICE 'Deleted % old published outbox events.', deleted_count;
+    RAISE NOTICE 'Deleted % processed outbox events.', deleted_count;
 END;
 $$;

@@ -76,7 +76,9 @@ func (
 
 // این تابع برای تک تک آیتم های یک سفارش به صورت جداگانه یک رویداد
 // منتشر میکند و رزرو آن محصول در سرویس محصولات کسر خواهد شد
-func (p *RabbitMQEventPublisher) PublishStockReleaseRequested(
+func (
+	p *RabbitMQEventPublisher,
+) PublishStockReleaseRequested(
 	ctx context.Context,
 	productID uuid.UUID,
 	quantity int32,
@@ -101,7 +103,9 @@ func (p *RabbitMQEventPublisher) PublishStockReleaseRequested(
 // بعد از تایید پرداخت از سمت سرویس پرداخت ابتدا در سرویس سفارشات
 // سفارش مورد نظر تایید شده و بعد این تابع یک رویداد تایید نهای برای سرویس
 // های دیگر منتشر خواهد کرد
-func (p *RabbitMQEventPublisher) PublishStockConfirmRequested(
+func (
+	p *RabbitMQEventPublisher,
+) PublishStockConfirmRequested(
 	ctx context.Context,
 	orderID uuid.UUID,
 	productID uuid.UUID,
