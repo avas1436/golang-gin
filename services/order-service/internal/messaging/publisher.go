@@ -209,6 +209,26 @@ func (
 	return json.Marshal(event)
 }
 
+// PublishRaw به ورکر Outbox اجازه می‌دهد پیلودهای از پیش‌سریالایز شده
+// را با Exchange و RoutingKey دلخواه مستقیماً ارسال کند.
+func (
+	p *RabbitMQEventPublisher,
+) PublishRaw(
+	ctx context.Context,
+	routingKey string,
+	payload []byte,
+) error {
+
+	if p == nil || p.publisher == nil {
+		return appErrors.New(
+			appErrors.KindInternal,
+			"messaging publisher is not initialized",
+		)
+	}
+
+	return p.publisher.Publish(ctx, routingKey, payload)
+}
+
 // Close بستن کانال مربوط به Publisher
 func (p *RabbitMQEventPublisher) Close() error {
 	if p == nil || p.publisher == nil {
