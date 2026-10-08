@@ -18,6 +18,9 @@ type Config struct {
 
 	// باید به سرویس محصولات متصل شویم
 	ProductServiceAddr string
+
+	// تنظیمات اوت باکس
+	Outbox commonConfig.OutboxConfig
 }
 
 // Load مقادیر را از متغیرهای محیطی می‌خواند.
@@ -76,6 +79,38 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
+	relayInterval, err := env.Duration(
+		"OUTBOX_RELAY_INTERVAL",
+		2*time.Second,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	relayBatchSize, err := env.Int(
+		"OUTBOX_RELAY_BATCH_SIZE",
+		50,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	cleanupInterval, err := env.Duration(
+		"OUTBOX_CLEANUP_INTERVAL",
+		1*time.Hour,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	retentionDays, err := env.Int(
+		"OUTBOX_RETENTION_DAYS",
+		7,
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	cfg := &Config{
 		// پورت این سرویس باید با سرویس های دیگه متفاوت باشه
 		GRPCPort: env.String("GRPC_PORT", "50053"),
@@ -115,6 +150,13 @@ func Load() (*Config, error) {
 			"PRODUCT_SERVICE_ADDR",
 			"localhost:50052",
 		),
+
+		Outbox: commonConfig.OutboxConfig{
+			RelayInterval:   relayInterval,
+			RelayBatchSize:  relayBatchSize,
+			CleanupInterval: cleanupInterval,
+			RetentionDays:   retentionDays,
+		},
 	}
 
 	return cfg, nil

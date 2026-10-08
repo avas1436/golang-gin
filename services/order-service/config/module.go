@@ -22,6 +22,9 @@ func ProvideJWTConfig(cfg *Config) *commonConfig.JWTConfig {
 func ProvideRabbitMQConfig(cfg *Config) *commonConfig.RabbitMQConfig {
 	return &cfg.RabbitMQ
 }
+func ProvideOutboxConfig(cfg *Config) *commonConfig.OutboxConfig {
+	return &cfg.Outbox
+}
 
 var Module = fx.Module(
 	"config",
@@ -33,5 +36,6 @@ var Module = fx.Module(
 		ProvideRedisConfig,
 		ProvideJWTConfig,
 		ProvideRabbitMQConfig,
+		ProvideOutboxConfig,
 	),
 )
