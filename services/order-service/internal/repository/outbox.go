@@ -63,6 +63,16 @@ type OutboxRepository interface {
 		eventID uuid.UUID,
 		reason string,
 	) error
+
+	// DeleteOldPublished رویدادهای published قدیمی‌تر از retentionDays
+	// را حذف می‌کند و تعداد ردیف‌های حذف‌شده را برمی‌گرداند.
+	//
+	// این متد توسط CleanupWorker صدا زده می‌شود و هیچ وابستگی به
+	// تراکنش ندارد یک DELETE ساده است
+	DeleteOldPublished(
+		ctx context.Context,
+		retentionDays int,
+	) (deleted int64, err error)
 }
 
 type outboxRepository struct {
@@ -383,4 +393,36 @@ func (
 	}
 
 	return nil
+}
+
+func (
+	r *outboxRepository,
+) DeleteOldPublished(
+	ctx context.Context,
+	retentionDays int,
+) (
+	int64,
+	error,
+) {
+
+	if retentionDays <= 0 {
+		retentionDays = 7
+	}
+
+	query := `
+		DELETE FROM outbox_events
+		WHERE status      = 'published'
+		  AND published_at < NOW() - ($1 || ' days')::INTERVAL
+	`
+
+	result, err := r.db.Exec(ctx, query, retentionDays)
+	if err != nil {
+		return 0, appErrors.Wrap(
+			appErrors.KindInternal,
+			err,
+			"failed to delete old published outbox events",
+		)
+	}
+
+	return result.RowsAffected(), nil
 }
