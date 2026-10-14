@@ -6,10 +6,12 @@ import (
 	"context"
 	"log"
 
+	commonConfig "pkg/config"
 	appErrors "pkg/errors"
 	"pkg/events"
 	"pkg/rabbitmq"
 
+	"product-service/config"
 	"product-service/internal/cache"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -125,6 +127,14 @@ func RegisterMessagingLifecycle(
 
 var Module = fx.Module(
 	"messaging",
+
+	// این فابريکِ کوچک، RabbitMQConfig را از کانفیگ کلی سرویس استخراج می‌کند
+	// و به پکیج مرکزی rabbitmq تحویل می‌دهد تا وابستگی ایجاد نشود
+	fx.Provide(
+		func(cfg *config.Config) commonConfig.RabbitMQConfig {
+			return cfg.RabbitMQ
+		},
+	),
 
 	fx.Provide(
 		NewOrderEventConsumer,

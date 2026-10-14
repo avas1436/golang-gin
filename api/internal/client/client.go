@@ -3,6 +3,7 @@
 package client
 
 import (
+	"crypto/tls"
 	"fmt"
 
 	"pkg/grpcclient"
@@ -27,7 +28,7 @@ type Clients struct {
 func New(cfg Config) (*Clients, error) {
 
 	// ایجاد یک مدیر اتصال gRPC
-	manager := grpcclient.NewManager()
+	manager := grpcclient.NewManager(tlsCfg: tls.Config)
 
 	// 1. User Service Client
 	// این کلاینت تنها اینترسپتر های پیش فرض را دارد
