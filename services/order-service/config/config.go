@@ -79,6 +79,17 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
+	// خواندن تنظیمات TLS برای RabbitMQ از محیط
+	rabbitEnableTLS, err := env.Bool("RABBITMQ_ENABLE_TLS", false)
+	if err != nil {
+		return nil, err
+	}
+	rabbitCAFile := env.String("RABBITMQ_CA_FILE", "")
+
+	rabbitCertFile := env.String("RABBITMQ_CERT_FILE", "")
+
+	rabbitKeyFile := env.String("RABBITMQ_KEY_FILE", "")
+
 	relayInterval, err := env.Duration(
 		"OUTBOX_RELAY_INTERVAL",
 		2*time.Second,
@@ -134,11 +145,17 @@ func Load() (*Config, error) {
 		},
 
 		RabbitMQ: commonConfig.RabbitMQConfig{
-			Host:     env.String("RABBITMQ_HOST", "localhost"),
-			Port:     env.String("RABBITMQ_PORT", "5672"),
-			User:     env.String("RABBITMQ_USER", "guest"),
-			Password: rabbitPassword,
-			VHost:    env.String("RABBITMQ_VHOST", ""),
+			Host:      env.String("RABBITMQ_HOST", "localhost"),
+			Port:      env.String("RABBITMQ_PORT", "5672"),
+			User:      env.String("RABBITMQ_USER", "guest"),
+			Password:  rabbitPassword,
+			VHost:     env.String("RABBITMQ_VHOST", ""),
+			EnableTLS: rabbitEnableTLS,
+			TLS: commonConfig.TLSConfig{
+				CAFile:   rabbitCAFile,
+				CertFile: rabbitCertFile,
+				KeyFile:  rabbitKeyFile,
+			},
 		},
 
 		JWT: commonConfig.JWTConfig{
