@@ -4,6 +4,7 @@ package server
 
 import (
 	"context"
+	tlsutil "pkg/tls"
 
 	"payment-service/config"
 
@@ -36,6 +37,7 @@ var Module = fx.Module(
 
 	fx.Provide(
 		NewServer,
+		tlsutil.ServerCredentials,
 	),
 
 	fx.Invoke(

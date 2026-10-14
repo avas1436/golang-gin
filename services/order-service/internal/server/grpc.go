@@ -18,6 +18,7 @@ import (
 	"order-service/internal/handler"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/reflection"
 )
 
@@ -44,6 +45,7 @@ func NewServer(
 	grpcHandler *handler.GRPCServer,
 	tokens auth.TokenManager,
 	limiter ratelimit.Limiter,
+	creds credentials.TransportCredentials,
 ) *GRPCServer {
 
 	chain := grpc.ChainUnaryInterceptor(
@@ -75,7 +77,7 @@ func NewServer(
 		),
 	)
 
-	grpcServer := grpc.NewServer(chain)
+	grpcServer := grpc.NewServer(chain, grpc.Creds(creds))
 
 	// ثبت RPCهای مربوط به Order Service.
 	pb.RegisterOrderServiceServer(
