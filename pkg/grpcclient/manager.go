@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"sync"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -26,9 +27,11 @@ import (
 //
 //	و افزایش کارایی می‌شود.
 //
-// grpc.ClientConn
+// مدیریت‌کننده متمرکز اتصالات gRPC با قابلیت کش کردن و ایمنی در برابر همگامی
 type ClientManager struct {
-	conns  []*grpc.ClientConn
+	mu sync.Mutex
+	// نگهداری اتصالات به ازای آدرس برای جلوگیری از ایجاد کانکشن‌های تکراری
+	conns  map[string]*grpc.ClientConn
 	tlsCfg *tls.Config
 }
 
@@ -36,7 +39,7 @@ type ClientManager struct {
 // یعنی یک نمونه از ClientManager در طول عمر برنامه وجود دارد و همه
 func NewManager(tlsCfg *tls.Config) *ClientManager {
 	return &ClientManager{
-		conns:  make([]*grpc.ClientConn, 0),
+		conns:  make(map[string]*grpc.ClientConn),
 		tlsCfg: tlsCfg,
 	}
 }
@@ -51,6 +54,15 @@ func (
 	*grpc.ClientConn,
 	error,
 ) {
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// اگر اتصال از قبل برای این آدرس وجود دارد، همان را برگردان
+	// (جلوگیری از هدر رفت منابع)
+	if conn, exists := m.conns[addr]; exists {
+		return conn, nil
+	}
 
 	var creds credentials.TransportCredentials
 
@@ -76,17 +88,24 @@ func (
 		return nil, fmt.Errorf("dial %s: %w", addr, err)
 	}
 
-	m.conns = append(m.conns, conn)
+	m.conns[addr] = conn
+
 	return conn, nil
 }
 
 // CloseAll تمامی اتصالات ساخته‌شده را یکجا می‌بندد
 func (m *ClientManager) CloseAll() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	var errs []error
-	for _, conn := range m.conns {
+	for addr, conn := range m.conns {
 		if err := conn.Close(); err != nil {
-			errs = append(errs, err)
+			errs = append(errs, fmt.Errorf("close conn %s: %w", addr, err))
 		}
 	}
+	// پاکسازی مپ پس از بسته شدن اتصالات
+	m.conns = make(map[string]*grpc.ClientConn)
+
 	return errors.Join(errs...)
 }
