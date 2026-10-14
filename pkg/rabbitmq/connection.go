@@ -22,7 +22,10 @@ package rabbitmq
 //     ۵. QoS و Prefetch: اگر میلیون‌ها پیام در صف باشد، RabbitMQ نباید همه را یکجا به Consumer بفرستد (چون Ram پر می‌شود). با Prefetch تعیین می‌کنیم که در هر لحظه، Consumer چند پیامِ در حال پردازش (بدون ACK) می‌تواند داشته باشد.
 
 import (
+	"crypto/tls"
+	"pkg/config"
 	appErrors "pkg/errors"
+	tlsutil "pkg/tls"
 	"sync"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -50,7 +53,14 @@ type Connection struct {
 
 // Connect یک اتصال جدید به RabbitMQ باز می‌کند.
 // url = commonConfig.RabbitMQConfig.URL()
-func Connect(url string) (*Connection, error) {
+func Connect(
+	url string,
+	enableTLS bool,
+	tlsCfg config.TLSConfig,
+) (
+	*Connection,
+	error,
+) {
 
 	// اعتبار سنجی آدرس اتصال
 	if url == "" {
@@ -60,16 +70,35 @@ func Connect(url string) (*Connection, error) {
 		)
 	}
 
-	conn, err := amqp.Dial(url)
+	var conn *amqp.Connection
+	var err error
+
+	if enableTLS {
+		var tlsConfig *tls.Config
+		// استفاده از پکیج متمرکز tlsutil برای گرفتن تنظیمات TLS کلاینت
+		tlsConfig, err = tlsutil.ClientTLSConfig(tlsCfg)
+		if err != nil {
+			return nil, appErrors.Wrap(
+				appErrors.KindInternal,
+				err,
+				"failed to load rabbitmq tls config",
+			)
+		}
+
+		// برقراری اتصال امن با متد اختصاصی DialTLS
+		conn, err = amqp.DialTLS(url, tlsConfig)
+
+	} else {
+		// اتصال معمولی بدون TLS برای محیط توسعه
+		conn, err = amqp.Dial(url)
+	}
 
 	if err != nil {
-
 		return nil, appErrors.Wrap(
 			appErrors.KindInternal,
 			err,
 			"failed to connect to rabbitmq",
 		)
-
 	}
 
 	return &Connection{conn: conn}, nil

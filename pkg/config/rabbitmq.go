@@ -11,12 +11,22 @@ type RabbitMQConfig struct {
 	User     string
 	Password string
 	VHost    string
+
+	EnableTLS bool `mapstructure:"enable_tls" yaml:"enable_tls"`
+
+	TLS TLSConfig `mapstructure:"tls" yaml:"tls"`
 }
 
 // URL آدرس اتصال AMQP را می‌سازد
 func (c RabbitMQConfig) URL() string {
+	scheme := "amqp"
+	if c.EnableTLS {
+		scheme = "amqps"
+	}
+
 	return fmt.Sprintf(
-		"amqp://%s:%s@%s:%s/%s",
+		"%s://%s:%s@%s:%s/%s",
+		scheme,
 		c.User,
 		c.Password,
 		c.Host,
