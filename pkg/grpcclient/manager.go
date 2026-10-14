@@ -8,10 +8,13 @@ package grpcclient
 // تجرید لایه شبکه: این لایه به عنوان یک واسط بین کدهای سرویس و gRPC عمل می‌کند و پیچیدگی‌های مربوط به مدیریت اتصالات را از کدهای اصلی سرویس جدا می‌کند.
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
+	"net"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
@@ -25,13 +28,17 @@ import (
 //
 // grpc.ClientConn
 type ClientManager struct {
-	conns []*grpc.ClientConn
+	conns  []*grpc.ClientConn
+	tlsCfg *tls.Config
 }
 
 // الگوی Singleton برای مدیریت اتصالات gRPC
 // یعنی یک نمونه از ClientManager در طول عمر برنامه وجود دارد و همه
-func NewManager() *ClientManager {
-	return &ClientManager{conns: make([]*grpc.ClientConn, 0)}
+func NewManager(tlsCfg *tls.Config) *ClientManager {
+	return &ClientManager{
+		conns:  make([]*grpc.ClientConn, 0),
+		tlsCfg: tlsCfg,
+	}
 }
 
 // Dial یک اتصال جدید با تنظیمات یکسان (Tracing, Retry, Timeout) می‌سازد
@@ -45,16 +52,26 @@ func (
 	error,
 ) {
 
-	defaultOpts := []grpc.DialOption{
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		// محل اضافه کردن Interceptor ها برای Tracing و Retry و Timeout
+	var creds credentials.TransportCredentials
+
+	if m.tlsCfg != nil {
+		host, _, err := net.SplitHostPort(addr)
+		if err != nil {
+			return nil, fmt.Errorf("bad addr %s: %w", addr, err)
+		}
+		cfg := m.tlsCfg.Clone()
+		cfg.ServerName = host // باید با SAN گواهی سرویس یکی باشد
+		creds = credentials.NewTLS(cfg)
+	} else {
+		creds = insecure.NewCredentials() // فقط وقتی TLS_ENABLED=false
 	}
 
-	// اضافه کردن گزینه‌های اضافی که کاربر می‌تواند
-	//  برای سفارشی‌سازی اتصال ارائه دهد
-	defaultOpts = append(defaultOpts, opts...)
+	all := append(
+		[]grpc.DialOption{grpc.WithTransportCredentials(creds)},
+		opts...,
+	)
 
-	conn, err := grpc.NewClient(addr, defaultOpts...)
+	conn, err := grpc.NewClient(addr, all...)
 	if err != nil {
 		return nil, fmt.Errorf("dial %s: %w", addr, err)
 	}
