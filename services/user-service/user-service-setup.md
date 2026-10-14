@@ -346,6 +346,25 @@ go get github.com/google/uuid
 
 </div>
 
+## طریقه اضافه کردن کاربر جدید به همراه دسترسی های مختص خودش در `RabbitMQ`
+
+<div dir="ltr">
+
+```bash
+rabbitmqctl delete_user guest
+rabbitmqctl add_user payment "$PAYMENT_MQ_PASSWORD"
+# configure | write | read
+rabbitmqctl set_permissions -p / payment '^payment.*' '^payment.*' '^(payment.*|order_events)$'
+
+rabbitmqctl add_user order "$ORDER_MQ_PASSWORD"
+rabbitmqctl set_permissions -p / order '^order.*' '^order.*' '^(order.*|payment_events)$'
+
+rabbitmqctl add_user product "$PRODUCT_MQ_PASSWORD"
+rabbitmqctl set_permissions -p / product '^product.*' '^product.*' '^(product.*|order_events)$'
+```
+
+</div>
+
 ## مراحل بعدی (هنوز انجام نشده)
 
 - ⏳ پیاده‌سازی لایه‌ی `handler`: پیاده‌سازی interface سرور gRPC تولیدشده از proto (`pb.UnimplementedUserServiceServer`)، که متدهای `UserService` رو صدا می‌زنه و خطاهای دامنه‌ای (با `appErrors.GetKind`) رو به کدهای استاندارد gRPC (`codes.NotFound`, `codes.Unauthenticated`, ...) تبدیل می‌کنه.
