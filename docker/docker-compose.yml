@@ -1,0 +1,66 @@
+name: shop
+
+networks:
+  public: # فقط Gateway
+  internal:
+    internal: true # بدون دسترسی به اینترنت
+  egress: # فقط سرویسی که باید بیرون برود (Payment → زرین‌پال)
+
+services:
+  gateway:
+    build: { context: .., dockerfile: docker/Dockerfile, args: { SERVICE: api } }
+    ports: ["8080:8080"] # در production پشت Caddy، این پورت هم حذف شود
+    networks: [public, internal]
+
+  user-service:
+    build:
+      {
+        context: ..,
+        dockerfile: docker/Dockerfile,
+        args: { SERVICE: services/user-service },
+      }
+    expose: ["50051"]
+    networks: [internal]
+
+  product-service:
+    build:
+      {
+        context: ..,
+        dockerfile: docker/Dockerfile,
+        args: { SERVICE: services/product-service },
+      }
+    expose: ["50052"]
+    networks: [internal]
+
+  order-service:
+    build:
+      {
+        context: ..,
+        dockerfile: docker/Dockerfile,
+        args: { SERVICE: services/order-service },
+      }
+    expose: ["50053"]
+    networks: [internal]
+
+  payment-service:
+    build:
+      {
+        context: ..,
+        dockerfile: docker/Dockerfile,
+        args: { SERVICE: services/payment-service },
+      }
+    expose: ["50054"]
+    networks: [internal, egress] # egress برای تماس با زرین‌پال
+
+  postgres:
+    image: postgres:17-alpine
+    networks: [internal] # بدون ports
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}"]
+    networks: [internal]
+
+  rabbitmq:
+    image: rabbitmq:3.13-alpine # بدون -management و بدون ports
+    networks: [internal]
